@@ -2,7 +2,7 @@ import { useState } from 'react'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
-function Fortune({ token, user, onLogout }) {
+function Fortune({ token, user, onLogout, onViewHistory }) {
   const [fortune, setFortune] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -41,12 +41,20 @@ function Fortune({ token, user, onLogout }) {
       <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl p-8 text-center">
         <div className="flex justify-between items-center mb-4">
           <p className="text-sm text-gray-600">Welcome, {user.email}</p>
-          <button
-            onClick={onLogout}
-            className="text-sm text-red-600 hover:text-red-700 font-semibold"
-          >
-            Logout
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={onViewHistory}
+              className="text-sm text-amber-600 hover:text-amber-700 font-semibold"
+            >
+              History
+            </button>
+            <button
+              onClick={onLogout}
+              className="text-sm text-red-600 hover:text-red-700 font-semibold"
+            >
+              Logout
+            </button>
+          </div>
         </div>
 
         <h1 className="text-4xl font-bold text-amber-600 mb-2">🥠</h1>

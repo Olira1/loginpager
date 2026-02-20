@@ -2,6 +2,7 @@ import { useState } from 'react'
 import Login from './components/Login'
 import Signup from './components/Signup'
 import Fortune from './components/Fortune'
+import History from './components/History'
 
 function App() {
   const [currentView, setCurrentView] = useState('login')
@@ -13,6 +14,7 @@ function App() {
     localStorage.setItem('user', JSON.stringify(user))
     setToken(token)
     setUser(user)
+    setCurrentView('fortune')
   }
 
   const handleLogout = () => {
@@ -24,7 +26,23 @@ function App() {
   }
 
   if (token && user) {
-    return <Fortune token={token} user={user} onLogout={handleLogout} />
+    if (currentView === 'history') {
+      return (
+        <History 
+          token={token}
+          onBack={() => setCurrentView('fortune')}
+        />
+      )
+    }
+    
+    return (
+      <Fortune 
+        token={token} 
+        user={user} 
+        onLogout={handleLogout}
+        onViewHistory={() => setCurrentView('history')}
+      />
+    )
   }
 
   return (

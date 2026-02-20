@@ -13,6 +13,9 @@ const PORT = process.env.PORT || 3000
 // Middleware
 const allowedOrigins = [
   'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:5175',
+  'http://localhost:5176',
   'http://localhost:3000',
   process.env.FRONTEND_URL
 ].filter(Boolean)
@@ -147,15 +150,41 @@ app.post('/api/login', async (req, res) => {
 })
 
 // Protected Fortune Route
-app.get('/api/fortune', authenticateToken, (req, res) => {
-  const randomIndex = Math.floor(Math.random() * fortunes.length)
-  const fortune = fortunes[randomIndex]
-  
-  res.json({
-    fortune,
-    timestamp: new Date().toISOString(),
-    user: req.user.email
-  })
+app.get('/api/fortune', authenticateToken, async (req, res) => {
+  try {
+    const randomIndex = Math.floor(Math.random() * fortunes.length)
+    const fortune = fortunes[randomIndex]
+    
+    // Save to fortune history
+    await pool.query(
+      'INSERT INTO fortune_history (user_id, fortune) VALUES (?, ?)',
+      [req.user.id, fortune]
+    )
+    
+    res.json({
+      fortune,
+      timestamp: new Date().toISOString(),
+      user: req.user.email
+    })
+  } catch (error) {
+    console.error('Fortune error:', error)
+    res.status(500).json({ error: 'Failed to get fortune' })
+  }
+})
+
+// Get Fortune History
+app.get('/api/fortune/history', authenticateToken, async (req, res) => {
+  try {
+    const [history] = await pool.query(
+      'SELECT id, fortune, created_at FROM fortune_history WHERE user_id = ? ORDER BY created_at DESC LIMIT 50',
+      [req.user.id]
+    )
+    
+    res.json({ history })
+  } catch (error) {
+    console.error('History error:', error)
+    res.status(500).json({ error: 'Failed to get history' })
+  }
 })
 
 // Health check
