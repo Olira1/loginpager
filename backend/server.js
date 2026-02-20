@@ -5,7 +5,16 @@ const app = express()
 const PORT = process.env.PORT || 3000
 
 // Middleware
-app.use(cors())
+const allowedOrigins = [
+  'http://localhost:5173', // Local Vite dev server
+  'http://localhost:3000', // Alternative local port
+  process.env.FRONTEND_URL // Production frontend URL from Vercel
+].filter(Boolean)
+
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true
+}))
 app.use(express.json())
 
 // Fortune cookie messages
