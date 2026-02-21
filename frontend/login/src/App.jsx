@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import Login from './components/Login'
 import Signup from './components/Signup'
-import Fortune from './components/Fortune'
-import History from './components/History'
+import Converter from './components/Converter'
+import ConversionHistory from './components/ConversionHistory'
 
 function App() {
   const [currentView, setCurrentView] = useState('login')
@@ -14,7 +14,7 @@ function App() {
     localStorage.setItem('user', JSON.stringify(user))
     setToken(token)
     setUser(user)
-    setCurrentView('fortune')
+    setCurrentView('converter')
   }
 
   const handleLogout = () => {
@@ -28,15 +28,15 @@ function App() {
   if (token && user) {
     if (currentView === 'history') {
       return (
-        <History 
+        <ConversionHistory 
           token={token}
-          onBack={() => setCurrentView('fortune')}
+          onBack={() => setCurrentView('converter')}
         />
       )
     }
     
     return (
-      <Fortune 
+      <Converter 
         token={token} 
         user={user} 
         onLogout={handleLogout}
@@ -46,7 +46,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       {currentView === 'login' ? (
         <Login 
           onSuccess={handleLoginSuccess}

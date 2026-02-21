@@ -26,30 +26,6 @@ app.use(cors({
 }))
 app.use(express.json())
 
-// Fortune cookie messages
-const fortunes = [
-  "A beautiful, smart, and loving person will be coming into your life.",
-  "Your ability to juggle many tasks will take you far.",
-  "A dubious friend may be an enemy in camouflage.",
-  "Good news will come to you by mail.",
-  "The fortune you seek is in another cookie.",
-  "A smile is your passport into the hearts of others.",
-  "You will be hungry again in one hour.",
-  "Your road to glory will be rocky, but fulfilling.",
-  "An exciting opportunity lies ahead of you.",
-  "You will make many changes before settling satisfactorily.",
-  "Adventure can be real happiness.",
-  "All your hard work will soon pay off.",
-  "Believe in yourself and others will too.",
-  "Courage is not the absence of fear; it is the conquest of it.",
-  "Determination is what you need today.",
-  "Every exit is an entry somewhere else.",
-  "Good things come to those who wait.",
-  "Happiness is not a destination, it is a way of life.",
-  "If you think you can, you can.",
-  "Keep your face to the sunshine and you will never see shadows."
-]
-
 // Auth Middleware
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization']
@@ -149,34 +125,63 @@ app.post('/api/login', async (req, res) => {
   }
 })
 
-// Protected Fortune Route
-app.get('/api/fortune', authenticateToken, async (req, res) => {
+// Temperature conversion functions
+const celsiusToFahrenheit = (c) => (c * 9/5) + 32
+const celsiusToKelvin = (c) => c + 273.15
+const fahrenheitToCelsius = (f) => (f - 32) * 5/9
+const fahrenheitToKelvin = (f) => ((f - 32) * 5/9) + 273.15
+const kelvinToCelsius = (k) => k - 273.15
+const kelvinToFahrenheit = (k) => ((k - 273.15) * 9/5) + 32
+
+// Convert Temperature
+app.post('/api/convert', authenticateToken, async (req, res) => {
   try {
-    const randomIndex = Math.floor(Math.random() * fortunes.length)
-    const fortune = fortunes[randomIndex]
+    const { value, from, to } = req.body
+
+    if (!value || !from || !to) {
+      return res.status(400).json({ error: 'Value, from, and to units are required' })
+    }
+
+    const temp = parseFloat(value)
+    if (isNaN(temp)) {
+      return res.status(400).json({ error: 'Invalid temperature value' })
+    }
+
+    let result
     
-    // Save to fortune history
+    // Convert based on from/to units
+    if (from === to) {
+      result = temp
+    } else if (from === 'celsius') {
+      result = to === 'fahrenheit' ? celsiusToFahrenheit(temp) : celsiusToKelvin(temp)
+    } else if (from === 'fahrenheit') {
+      result = to === 'celsius' ? fahrenheitToCelsius(temp) : fahrenheitToKelvin(temp)
+    } else if (from === 'kelvin') {
+      result = to === 'celsius' ? kelvinToCelsius(temp) : kelvinToFahrenheit(temp)
+    }
+
+    // Save to conversion history
     await pool.query(
-      'INSERT INTO fortune_history (user_id, fortune) VALUES (?, ?)',
-      [req.user.id, fortune]
+      'INSERT INTO conversion_history (user_id, value, from_unit, to_unit, result) VALUES (?, ?, ?, ?, ?)',
+      [req.user.id, temp, from, to, result]
     )
-    
+
     res.json({
-      fortune,
-      timestamp: new Date().toISOString(),
-      user: req.user.email
+      original: { value: temp, unit: from },
+      converted: { value: parseFloat(result.toFixed(2)), unit: to },
+      timestamp: new Date().toISOString()
     })
   } catch (error) {
-    console.error('Fortune error:', error)
-    res.status(500).json({ error: 'Failed to get fortune' })
+    console.error('Conversion error:', error)
+    res.status(500).json({ error: 'Failed to convert temperature' })
   }
 })
 
-// Get Fortune History
-app.get('/api/fortune/history', authenticateToken, async (req, res) => {
+// Get Conversion History
+app.get('/api/convert/history', authenticateToken, async (req, res) => {
   try {
     const [history] = await pool.query(
-      'SELECT id, fortune, created_at FROM fortune_history WHERE user_id = ? ORDER BY created_at DESC LIMIT 50',
+      'SELECT id, value, from_unit, to_unit, result, created_at FROM conversion_history WHERE user_id = ? ORDER BY created_at DESC LIMIT 50',
       [req.user.id]
     )
     
