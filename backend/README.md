@@ -1,77 +1,56 @@
-# Fortune Cookie Backend with MySQL/TiDB
+# School Portal Backend
 
-Express API with MySQL authentication and fortune cookie messages.
+Express.js REST API for the School Portal grade management system.
 
-## Local Development (MAMP)
+## Setup
 
-1. Start MAMP and ensure MySQL is running
-
-2. Create database and user in phpMyAdmin:
-```sql
-CREATE DATABASE fortune;
-CREATE USER 'fortune'@'localhost' IDENTIFIED BY '1234t';
-GRANT ALL PRIVILEGES ON fortune.* TO 'fortune'@'localhost';
-FLUSH PRIVILEGES;
-
-USE fortune;
-CREATE TABLE users (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  email VARCHAR(255) UNIQUE NOT NULL,
-  password VARCHAR(255) NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-3. Your `.env` file should have MAMP settings:
-```
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=fortune
-DB_PASSWORD=1234t
-DB_NAME=fortune
-DB_SSL=false
-```
-
-4. Install and run:
+1. Install dependencies:
 ```bash
 npm install
-npm start
 ```
 
-## Production Deployment (Render + TiDB)
+2. Create `.env` file (copy from `.env.example`):
+```bash
+PORT=5000
+NODE_ENV=development
+JWT_SECRET=your-secret-key-change-in-production
+JWT_EXPIRES_IN=24h
+DB_HOST=localhost
+DB_USER=root
+DB_PASSWORD=your-password
+DB_NAME=school_portal
+DB_PORT=3306
+FRONTEND_URL=http://localhost:5173
+```
 
-### TiDB Setup
-1. Create TiDB Serverless cluster at https://tidbcloud.com
-2. Create users table (same SQL as above)
-3. Get connection details from TiDB Console
+3. Start the server:
+```bash
+npm start
+# or for development with auto-reload:
+npm run dev
+```
 
-### Render Deployment
-1. Push code to GitHub
-2. Create Web Service on Render
-3. Set Root Directory: `backend`
-4. Build Command: `npm install`
-5. Start Command: `npm start`
+## Project Structure
 
-### Environment Variables (Render)
-Add these in Render Dashboard → Environment:
-- `DB_HOST` - TiDB host (e.g., gateway01.eu-central-1.prod.aws.tidbcloud.com)
-- `DB_PORT` - `4000`
-- `DB_USER` - TiDB username
-- `DB_PASSWORD` - TiDB password
-- `DB_NAME` - `test`
-- `DB_SSL` - `true`
-- `JWT_SECRET` - Random secret string
-- `FRONTEND_URL` - Your Vercel URL (e.g., https://loginpager.vercel.app)
+```
+backend/
+  src/
+    config/       # DB connection, JWT config
+    controllers/  # Route handlers by role
+    middleware/   # Auth, role-check, error handler
+    models/       # Database queries
+    routes/       # API routes by role
+    utils/        # Helpers
+  app.js          # Express app setup
+  server.js       # Server entry point
+```
 
 ## API Endpoints
 
-- `POST /api/signup` - Register new user (email, password)
-- `POST /api/login` - Login user (returns JWT token)
-- `GET /api/fortune` - Get random fortune (requires Authorization header)
-- `GET /health` - Health check
+Base URL: `http://localhost:5000/api/v1`
 
-## Useful Scripts
+See [API Contract](../API%20CONTRACT/apicontract.md) for complete endpoint documentation.
 
-- `npm start` - Start server
-- `node test-db.js` - Test database connection
-- `node check-users.js` - List all users in database
+
+
+

@@ -1,0 +1,2270 @@
+{
+  "info": {
+    "name": "School Portal API",
+    "description": "Ethiopian Secondary School Grade Management System API\n\nBase URL: http://localhost:5000/api/v1\n\n## Authentication\nMost endpoints require JWT token. After login, copy the `access_token` and set it in the collection variables or use it in the Authorization header.\n\n## Test Users\n- Admin: admin@schoolportal.edu.et / password123\n- School Head: kebede@aass.edu.et / password123\n- Teacher: tigist@aass.edu.et / password123\n- Class Head: berhanu@aass.edu.et / password123\n- Student: abebe.k@student.aass.edu.et / password123\n- Parent: kebede.d@parent.aass.edu.et / password123\n- Store House: mulugeta@aass.edu.et / password123",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000/api/v1"
+    },
+    {
+      "key": "token",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Authentication",
+      "description": "Login, get current user, logout endpoints",
+      "item": [
+        {
+          "name": "Login - Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@schoolportal.edu.et\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Login as Admin user. Copy the access_token from response."
+          },
+          "response": []
+        },
+        {
+          "name": "Login - School Head",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"kebede@aass.edu.et\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Login as School Head user"
+          },
+          "response": []
+        },
+        {
+          "name": "Login - Teacher",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"tigist@aass.edu.et\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Login as Teacher user"
+          },
+          "response": []
+        },
+        {
+          "name": "Login - Class Head",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"berhanu@aass.edu.et\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Login as Class Head user"
+          },
+          "response": []
+        },
+        {
+          "name": "Login - Student",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"abebe.k@student.aass.edu.et\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Login as Student user"
+          },
+          "response": []
+        },
+        {
+          "name": "Login - Parent",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"kebede.d@parent.aass.edu.et\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Login as Parent user"
+          },
+          "response": []
+        },
+        {
+          "name": "Login - Store House",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"mulugeta@aass.edu.et\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Login as Store House user"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "me"]
+            },
+            "description": "Get current logged-in user details"
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "logout"]
+            },
+            "description": "Logout current user"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Admin",
+      "description": "Admin endpoints for managing schools and promotion criteria",
+      "item": [
+        {
+          "name": "Schools",
+          "item": [
+            {
+              "name": "List Schools",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/schools",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "schools"]
+                },
+                "description": "Get list of all schools"
+              },
+              "response": []
+            },
+            {
+              "name": "Get School Details",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/schools/1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "schools", "1"]
+                },
+                "description": "Get details of a specific school"
+              },
+              "response": []
+            },
+            {
+              "name": "Create School",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"New Test School\",\n  \"code\": \"NTS001\",\n  \"address\": \"Addis Ababa, Ethiopia\",\n  \"phone\": \"0911223344\",\n  \"email\": \"info@newschool.edu.et\",\n  \"school_head\": {\n    \"name\": \"Dr. Test User\",\n    \"email\": \"head@newschool.edu.et\",\n    \"phone\": \"0911223355\",\n    \"password\": \"password123\"\n  }\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/schools",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "schools"]
+                },
+                "description": "Create a new school with school head"
+              },
+              "response": []
+            },
+            {
+              "name": "Update School",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Updated School Name\",\n  \"address\": \"New Address, Addis Ababa\",\n  \"phone\": \"0911999888\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/schools/1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "schools", "1"]
+                },
+                "description": "Update school information"
+              },
+              "response": []
+            },
+            {
+              "name": "Activate School",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/schools/1/activate",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "schools", "1", "activate"]
+                },
+                "description": "Activate a school"
+              },
+              "response": []
+            },
+            {
+              "name": "Deactivate School",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/schools/1/deactivate",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "schools", "1", "deactivate"]
+                },
+                "description": "Deactivate a school"
+              },
+              "response": []
+            },
+            {
+              "name": "Delete School",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/schools/3",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "schools", "3"]
+                },
+                "description": "Delete a school (use with caution)"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Promotion Criteria",
+          "item": [
+            {
+              "name": "List Promotion Criteria",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/promotion-criteria",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "promotion-criteria"]
+                },
+                "description": "Get all promotion criteria"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Promotion Criteria",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/promotion-criteria/1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "promotion-criteria", "1"]
+                },
+                "description": "Get specific promotion criteria"
+              },
+              "response": []
+            },
+            {
+              "name": "Create Promotion Criteria",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Grade 11 Criteria\",\n  \"passing_average\": 50,\n  \"passing_per_subject\": 50,\n  \"max_failing_subjects\": 2\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/promotion-criteria",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "promotion-criteria"]
+                },
+                "description": "Create new promotion criteria"
+              },
+              "response": []
+            },
+            {
+              "name": "Update Promotion Criteria",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"passing_average\": 55,\n  \"max_failing_subjects\": 1\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/promotion-criteria/1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "promotion-criteria", "1"]
+                },
+                "description": "Update promotion criteria"
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Promotion Criteria",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/promotion-criteria/3",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "promotion-criteria", "3"]
+                },
+                "description": "Delete promotion criteria"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Statistics",
+          "item": [
+            {
+              "name": "Get Platform Statistics",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/statistics",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "statistics"]
+                },
+                "description": "Get platform-wide statistics"
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. School Head",
+      "description": "School Head endpoints for managing grades, classes, subjects, and teachers",
+      "item": [
+        {
+          "name": "Grades",
+          "item": [
+            {
+              "name": "List Grades",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/school/grades",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["school-head", "grades"]
+                },
+                "description": "Get all grades in the school"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Grade Details",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/school/grades/1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["school-head", "grades", "1"]
+                },
+                "description": "Get specific grade details"
+              },
+              "response": []
+            },
+            {
+              "name": "Create Grade",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Grade 12\",\n  \"level\": 12\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/school/grades",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["school-head", "grades"]
+                },
+                "description": "Create a new grade"
+              },
+              "response": []
+            },
+            {
+              "name": "Update Grade",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Grade 9 Updated\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/school/grades/1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["school-head", "grades", "1"]
+                },
+                "description": "Update grade information"
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Grade",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/school/grades/5",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["school-head", "grades", "5"]
+                },
+                "description": "Delete a grade"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Classes",
+          "item": [
+            {
+              "name": "List Classes",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/school/classes",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["school-head", "classes"]
+                },
+                "description": "Get all classes in the school"
+              },
+              "response": []
+            },
+            {
+              "name": "List Classes by Grade",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/school/classes?grade_id=1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["school-head", "classes"],
+                  "query": [
+                    {
+                      "key": "grade_id",
+                      "value": "1"
+                    }
+                  ]
+                },
+                "description": "Get classes filtered by grade"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Class Details",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/school/classes/1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["school-head", "classes", "1"]
+                },
+                "description": "Get specific class details"
+              },
+              "response": []
+            },
+            {
+              "name": "Create Class",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Section C\",\n  \"grade_id\": 1,\n  \"academic_year_id\": 1\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/school/classes",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["school-head", "classes"]
+                },
+                "description": "Create a new class"
+              },
+              "response": []
+            },
+            {
+              "name": "Update Class",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Section A Updated\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/school/classes/1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["school-head", "classes", "1"]
+                },
+                "description": "Update class information"
+              },
+              "response": []
+            },
+            {
+              "name": "Assign Class Head",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"teacher_id\": 3\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/school/classes/1/class-head",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["school-head", "classes", "1", "assign-head"]
+                },
+                "description": "Assign a class head using phone number"
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Class",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/school/classes/5",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["school-head", "classes", "5"]
+                },
+                "description": "Delete a class"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Subjects",
+          "item": [
+            {
+              "name": "List Subjects",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/school/subjects",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["school-head", "subjects"]
+                },
+                "description": "Get all subjects in the school"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Subject Details",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/school/subjects/1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["school-head", "subjects", "1"]
+                },
+                "description": "Get specific subject details"
+              },
+              "response": []
+            },
+            {
+              "name": "Create Subject",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Computer Science\",\n  \"grade_id\": 1\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/school/subjects",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["school-head", "subjects"]
+                },
+                "description": "Create a new subject"
+              },
+              "response": []
+            },
+            {
+              "name": "Update Subject",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Mathematics Advanced\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/school/subjects/1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["school-head", "subjects", "1"]
+                },
+                "description": "Update subject information"
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Subject",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/school/subjects/10",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["school-head", "subjects", "10"]
+                },
+                "description": "Delete a subject"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Assessment Types",
+          "item": [
+            {
+              "name": "List Assessment Types",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/school/assessment-types",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["school-head", "assessment-types"]
+                },
+                "description": "Get all assessment types"
+              },
+              "response": []
+            },
+            {
+              "name": "Create Assessment Type",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Practical Exam\",\n  \"default_weight_percent\": 15\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/school/assessment-types",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["school-head", "assessment-types"]
+                },
+                "description": "Create a new assessment type with default weight"
+              },
+              "response": []
+            },
+            {
+              "name": "Update Assessment Type",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Updated Test\",\n  \"default_weight_percent\": 20\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/school/assessment-types/1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["school-head", "assessment-types", "1"]
+                },
+                "description": "Update assessment type"
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Assessment Type",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/school/assessment-types/5",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["school-head", "assessment-types", "5"]
+                },
+                "description": "Delete an assessment type"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Teaching Assignments",
+          "item": [
+            {
+              "name": "List Teaching Assignments",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/school/teaching-assignments",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["school-head", "teaching-assignments"]
+                },
+                "description": "Get all teaching assignments"
+              },
+              "response": []
+            },
+            {
+              "name": "Create Teaching Assignment",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"teacher_id\": 3,\n  \"subject_id\": 1,\n  \"class_id\": 1,\n  \"academic_year_id\": 1\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/school/teaching-assignments",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["school-head", "teaching-assignments"]
+                },
+                "description": "Assign a teacher to a subject/class"
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Teaching Assignment",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/school/teaching-assignments/5",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["school-head", "teaching-assignments", "5"]
+                },
+                "description": "Remove a teaching assignment"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Teachers",
+          "item": [
+            {
+              "name": "List Teachers",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/school/teachers",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["school-head", "teachers"]
+                },
+                "description": "Get all teachers in the school"
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Teacher",
+      "description": "Teacher endpoints for managing grades and assessments",
+      "item": [
+        {
+          "name": "View Assignments",
+          "item": [
+            {
+              "name": "Get Assigned Classes",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/teacher/assigned-classes",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["teacher", "assigned-classes"]
+                },
+                "description": "Get classes assigned to this teacher"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Assigned Subjects",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/teacher/assigned-subjects",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["teacher", "assigned-subjects"]
+                },
+                "description": "Get subjects assigned to this teacher"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Assessment Weights",
+          "item": [
+            {
+              "name": "Get Assessment Weights",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/teacher/classes/1/subjects/1/assessment-weights",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["teacher", "classes", "1", "subjects", "1", "assessment-weights"]
+                },
+                "description": "Get assessment weights for a class/subject"
+              },
+              "response": []
+            },
+            {
+              "name": "Set Assessment Weights",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"weights\": [\n    { \"assessment_type_id\": 1, \"weight_percent\": 10 },\n    { \"assessment_type_id\": 2, \"weight_percent\": 15 },\n    { \"assessment_type_id\": 3, \"weight_percent\": 25 },\n    { \"assessment_type_id\": 4, \"weight_percent\": 50 }\n  ]\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/teacher/classes/1/subjects/1/assessment-weights",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["teacher", "classes", "1", "subjects", "1", "assessment-weights"]
+                },
+                "description": "Set assessment weights (must total 100%)"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Student Grades",
+          "item": [
+            {
+              "name": "Get Student List",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/teacher/classes/1/students",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["teacher", "classes", "1", "students"]
+                },
+                "description": "Get list of students in a class"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Student Grades",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/teacher/classes/1/subjects/1/grades?semester_id=1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["teacher", "classes", "1", "subjects", "1", "grades"],
+                  "query": [
+                    {
+                      "key": "semester_id",
+                      "value": "1"
+                    }
+                  ]
+                },
+                "description": "Get grades for all students in a class/subject"
+              },
+              "response": []
+            },
+            {
+              "name": "Enter Single Grade",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"student_id\": 1,\n  \"assessment_type_id\": 1,\n  \"semester_id\": 1,\n  \"score\": 85\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/teacher/classes/1/subjects/1/grades",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["teacher", "classes", "1", "subjects", "1", "grades"]
+                },
+                "description": "Enter a single student grade"
+              },
+              "response": []
+            },
+            {
+              "name": "Bulk Enter Grades",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"grades\": [\n    { \"student_id\": 1, \"assessment_type_id\": 1, \"semester_id\": 1, \"score\": 85 },\n    { \"student_id\": 2, \"assessment_type_id\": 1, \"semester_id\": 1, \"score\": 78 },\n    { \"student_id\": 3, \"assessment_type_id\": 1, \"semester_id\": 1, \"score\": 92 }\n  ]\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/teacher/classes/1/subjects/1/grades/bulk",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["teacher", "classes", "1", "subjects", "1", "grades", "bulk"]
+                },
+                "description": "Enter multiple grades at once"
+              },
+              "response": []
+            },
+            {
+              "name": "Update Grade",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"score\": 90\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/teacher/classes/1/subjects/1/grades/1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["teacher", "classes", "1", "subjects", "1", "grades", "1"]
+                },
+                "description": "Update an existing grade"
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Grade",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/teacher/classes/1/subjects/1/grades/1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["teacher", "classes", "1", "subjects", "1", "grades", "1"]
+                },
+                "description": "Delete a grade"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Submissions",
+          "item": [
+            {
+              "name": "Submit Grades for Approval",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"semester_id\": 1\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/teacher/classes/1/subjects/1/submit",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["teacher", "classes", "1", "subjects", "1", "submit"]
+                },
+                "description": "Submit grades for class head approval"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Submission Status",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/teacher/submissions/status?semester_id=1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["teacher", "submissions", "status"],
+                  "query": [
+                    {
+                      "key": "semester_id",
+                      "value": "1"
+                    }
+                  ]
+                },
+                "description": "Get status of grade submissions"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Computed Averages",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/teacher/classes/1/subjects/1/averages?semester_id=1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["teacher", "classes", "1", "subjects", "1", "averages"],
+                  "query": [
+                    {
+                      "key": "semester_id",
+                      "value": "1"
+                    }
+                  ]
+                },
+                "description": "Get computed weighted averages for all students"
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Class Head",
+      "description": "Class Head endpoints for reviewing, compiling, and publishing grades",
+      "item": [
+        {
+          "name": "Student List",
+          "item": [
+            {
+              "name": "Get Class Students",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/class-head/students",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["class-head", "students"]
+                },
+                "description": "Get all students in the class head's class"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Submissions",
+          "item": [
+            {
+              "name": "Get Submission Checklist",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/class-head/submissions/checklist?semester_id=1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["class-head", "submissions", "checklist"],
+                  "query": [
+                    {
+                      "key": "semester_id",
+                      "value": "1"
+                    }
+                  ]
+                },
+                "description": "Get list of all subjects and their submission status"
+              },
+              "response": []
+            },
+            {
+              "name": "View Submission Details",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/class-head/submissions/1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["class-head", "submissions", "1"]
+                },
+                "description": "View details of a grade submission"
+              },
+              "response": []
+            },
+            {
+              "name": "Approve Submission",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/class-head/submissions/1/approve",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["class-head", "submissions", "1", "approve"]
+                },
+                "description": "Approve a grade submission"
+              },
+              "response": []
+            },
+            {
+              "name": "Reject Submission",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"Please review student #5's quiz score\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/class-head/submissions/1/reject",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["class-head", "submissions", "1", "reject"]
+                },
+                "description": "Reject a grade submission with reason"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Grade Management",
+          "item": [
+            {
+              "name": "Get Student Rankings",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/class-head/rankings?semester_id=1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["class-head", "rankings"],
+                  "query": [
+                    {
+                      "key": "semester_id",
+                      "value": "1"
+                    }
+                  ]
+                },
+                "description": "Get student rankings by average score"
+              },
+              "response": []
+            },
+            {
+              "name": "Compile Grades",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"semester_id\": 1\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/class-head/grades/compile",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["class-head", "grades", "compile"]
+                },
+                "description": "Compile all approved grades into final results"
+              },
+              "response": []
+            },
+            {
+              "name": "Publish Results",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"semester_id\": 1\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/class-head/grades/publish",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["class-head", "grades", "publish"]
+                },
+                "description": "Publish results to students and parents"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Reports",
+          "item": [
+            {
+              "name": "Get Class Snapshot",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/class-head/class-snapshot?semester_id=1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["class-head", "class-snapshot"],
+                  "query": [
+                    {
+                      "key": "semester_id",
+                      "value": "1"
+                    }
+                  ]
+                },
+                "description": "Get class-wide performance snapshot"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Student Report",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/class-head/students/1/report?semester_id=1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["class-head", "students", "1", "report"],
+                  "query": [
+                    {
+                      "key": "semester_id",
+                      "value": "1"
+                    }
+                  ]
+                },
+                "description": "Get individual student report card"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Store House",
+          "item": [
+            {
+              "name": "Send Roster to Store House",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"semester_id\": 1\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/class-head/roster/send",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["class-head", "roster", "send"]
+                },
+                "description": "Send class roster to Store House for archiving"
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Student",
+      "description": "Student endpoints for viewing reports and grades",
+      "item": [
+        {
+          "name": "Profile",
+          "item": [
+            {
+              "name": "Get Student Profile",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/student/profile",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["student", "profile"]
+                },
+                "description": "Get student profile information"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Reports",
+          "item": [
+            {
+              "name": "Get Semester Report",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/student/reports/semester?semester_id=1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["student", "reports", "semester"],
+                  "query": [
+                    {
+                      "key": "semester_id",
+                      "value": "1"
+                    }
+                  ]
+                },
+                "description": "Get semester report card"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Year Report",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/student/reports/year?academic_year_id=1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["student", "reports", "year"],
+                  "query": [
+                    {
+                      "key": "academic_year_id",
+                      "value": "1"
+                    }
+                  ]
+                },
+                "description": "Get full year report card"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Grades",
+          "item": [
+            {
+              "name": "Get Subject Grades",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/student/subjects/1/grades?semester_id=1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["student", "subjects", "1", "grades"],
+                  "query": [
+                    {
+                      "key": "semester_id",
+                      "value": "1"
+                    }
+                  ]
+                },
+                "description": "Get detailed grades for a specific subject"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Rank and Average",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/student/rank?semester_id=1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["student", "rank"],
+                  "query": [
+                    {
+                      "key": "semester_id",
+                      "value": "1"
+                    }
+                  ]
+                },
+                "description": "Get student's rank and average in class"
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7. Parent",
+      "description": "Parent endpoints for viewing children's grades",
+      "item": [
+        {
+          "name": "Children",
+          "item": [
+            {
+              "name": "List Children",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/parent/children",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["parent", "children"]
+                },
+                "description": "Get list of parent's children"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Reports",
+          "item": [
+            {
+              "name": "Get Child Semester Report",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/parent/children/1/reports/semester?semester_id=1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["parent", "children", "1", "reports", "semester"],
+                  "query": [
+                    {
+                      "key": "semester_id",
+                      "value": "1"
+                    }
+                  ]
+                },
+                "description": "Get child's semester report card"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Child Year Report",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/parent/children/1/reports/year?academic_year_id=1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["parent", "children", "1", "reports", "year"],
+                  "query": [
+                    {
+                      "key": "academic_year_id",
+                      "value": "1"
+                    }
+                  ]
+                },
+                "description": "Get child's full year report card"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Grades",
+          "item": [
+            {
+              "name": "Get Child Subject Grades",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/parent/children/1/subjects/1/grades?semester_id=1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["parent", "children", "1", "subjects", "1", "grades"],
+                  "query": [
+                    {
+                      "key": "semester_id",
+                      "value": "1"
+                    }
+                  ]
+                },
+                "description": "Get child's detailed grades for a subject"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Child Rank and Average",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/parent/children/1/rank?semester_id=1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["parent", "children", "1", "rank"],
+                  "query": [
+                    {
+                      "key": "semester_id",
+                      "value": "1"
+                    }
+                  ]
+                },
+                "description": "Get child's rank and average in class"
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "8. Store House",
+      "description": "Store House endpoints for managing rosters and transcripts",
+      "item": [
+        {
+          "name": "Rosters",
+          "item": [
+            {
+              "name": "List Rosters",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/store-house/rosters",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["store-house", "rosters"]
+                },
+                "description": "Get all class rosters received"
+              },
+              "response": []
+            },
+            {
+              "name": "List Rosters (Filtered)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/store-house/rosters?grade_id=1&academic_year_id=1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["store-house", "rosters"],
+                  "query": [
+                    {
+                      "key": "grade_id",
+                      "value": "1"
+                    },
+                    {
+                      "key": "academic_year_id",
+                      "value": "1"
+                    }
+                  ]
+                },
+                "description": "Get rosters filtered by grade and academic year"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Roster Details",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/store-house/rosters/1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["store-house", "rosters", "1"]
+                },
+                "description": "Get detailed roster with all student data"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Students",
+          "item": [
+            {
+              "name": "Search Students",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/store-house/students/search",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["store-house", "students", "search"]
+                },
+                "description": "Search all students in the school"
+              },
+              "response": []
+            },
+            {
+              "name": "Search Students by Name",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/store-house/students/search?name=Abebe",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["store-house", "students", "search"],
+                  "query": [
+                    {
+                      "key": "name",
+                      "value": "Abebe"
+                    }
+                  ]
+                },
+                "description": "Search students by name"
+              },
+              "response": []
+            },
+            {
+              "name": "Search Students by Grade",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/store-house/students/search?grade_id=1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["store-house", "students", "search"],
+                  "query": [
+                    {
+                      "key": "grade_id",
+                      "value": "1"
+                    }
+                  ]
+                },
+                "description": "Search students by grade level"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Cumulative Record",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/store-house/students/1/cumulative-record",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["store-house", "students", "1", "cumulative-record"]
+                },
+                "description": "Get student's complete academic history"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Transcripts",
+          "item": [
+            {
+              "name": "List Transcripts",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/store-house/transcripts",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["store-house", "transcripts"]
+                },
+                "description": "Get all generated transcripts"
+              },
+              "response": []
+            },
+            {
+              "name": "Generate Transcript",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"purpose\": \"Transfer to another school\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/store-house/students/1/transcript",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["store-house", "students", "1", "transcript"]
+                },
+                "description": "Generate official transcript for a student"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Transcript Details",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/store-house/transcripts/1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["store-house", "transcripts", "1"]
+                },
+                "description": "Get generated transcript details"
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+
