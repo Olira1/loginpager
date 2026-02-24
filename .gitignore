@@ -6,6 +6,10 @@
 backend/.env
 backend/.env.production
 database.md
+/plan
+/API CONTRACT
+
+
 
 # Dependencies
 node_modules/

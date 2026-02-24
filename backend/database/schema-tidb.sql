@@ -16,6 +16,7 @@ DROP TABLE IF EXISTS assessment_weights;
 DROP TABLE IF EXISTS weight_templates;
 DROP TABLE IF EXISTS assessment_types;
 DROP TABLE IF EXISTS teaching_assignments;
+DROP TABLE IF EXISTS teachers;
 DROP TABLE IF EXISTS student_parents;
 DROP TABLE IF EXISTS students;
 DROP TABLE IF EXISTS subjects;
@@ -33,6 +34,7 @@ DROP TABLE IF EXISTS promotion_criteria;
 CREATE TABLE schools (
     id INT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(255) NOT NULL,
+    code VARCHAR(20) UNIQUE,
     address VARCHAR(500),
     phone VARCHAR(20),
     email VARCHAR(255),
@@ -48,21 +50,27 @@ CREATE TABLE schools (
 CREATE TABLE users (
     id INT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(255) NOT NULL,
-    email VARCHAR(255) NOT NULL UNIQUE,
+    first_name VARCHAR(100),
+    last_name VARCHAR(100),
+    username VARCHAR(255) UNIQUE,
+    email VARCHAR(255) NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
     phone VARCHAR(20),
-    role ENUM('admin', 'school_head', 'teacher', 'class_head', 'student', 'parent', 'store_house') NOT NULL,
+    gender ENUM('M', 'F') NULL,
+    role ENUM('admin', 'school_head', 'teacher', 'class_head', 'student', 'parent', 'store_house', 'registrar') NOT NULL,
     school_id INT NULL,
     is_active BOOLEAN DEFAULT TRUE,
+    must_change_password BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
+    deactivated_at TIMESTAMP NULL,
+
     FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE SET NULL
 );
 
 -- Add foreign key for school_head after users table exists
-ALTER TABLE schools 
-ADD CONSTRAINT fk_school_head 
+ALTER TABLE schools
+ADD CONSTRAINT fk_school_head
 FOREIGN KEY (school_head_id) REFERENCES users(id) ON DELETE SET NULL;
 
 -- =====================================================
@@ -88,7 +96,7 @@ CREATE TABLE semesters (
     start_date DATE,
     end_date DATE,
     is_current BOOLEAN DEFAULT FALSE,
-    
+
     FOREIGN KEY (academic_year_id) REFERENCES academic_years(id) ON DELETE CASCADE
 );
 
@@ -100,7 +108,7 @@ CREATE TABLE grades (
     school_id INT NOT NULL,
     level INT NOT NULL,
     name VARCHAR(50) NOT NULL,
-    
+
     FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE,
     UNIQUE KEY unique_grade_per_school (school_id, level)
 );
@@ -114,7 +122,7 @@ CREATE TABLE classes (
     name VARCHAR(50) NOT NULL,
     class_head_id INT NULL,
     academic_year_id INT NOT NULL,
-    
+
     FOREIGN KEY (grade_id) REFERENCES grades(id) ON DELETE CASCADE,
     FOREIGN KEY (class_head_id) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY (academic_year_id) REFERENCES academic_years(id) ON DELETE CASCADE
@@ -127,7 +135,7 @@ CREATE TABLE subjects (
     id INT PRIMARY KEY AUTO_INCREMENT,
     school_id INT NOT NULL,
     name VARCHAR(100) NOT NULL,
-    
+
     FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE,
     UNIQUE KEY unique_subject_per_school (school_id, name)
 );
@@ -143,9 +151,11 @@ CREATE TABLE students (
     date_of_birth DATE,
     sex ENUM('Male', 'Female') NOT NULL,
     date_of_admission DATE,
-    
+    academic_year_id INT NULL,
+
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (academic_year_id) REFERENCES academic_years(id) ON DELETE SET NULL
 );
 
 -- =====================================================
@@ -156,14 +166,32 @@ CREATE TABLE student_parents (
     student_id INT NOT NULL,
     parent_id INT NOT NULL,
     relationship VARCHAR(50),
-    
+
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
     FOREIGN KEY (parent_id) REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE KEY unique_student_parent (student_id, parent_id)
 );
 
 -- =====================================================
--- TABLE 10: teaching_assignments
+-- TABLE 10: teachers
+-- =====================================================
+CREATE TABLE teachers (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL UNIQUE,
+    staff_code VARCHAR(50) UNIQUE,
+    date_of_birth DATE,
+    qualification VARCHAR(200),
+    specialization VARCHAR(100),
+    school_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE
+);
+
+-- =====================================================
+-- TABLE 11: teaching_assignments
 -- =====================================================
 CREATE TABLE teaching_assignments (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -171,7 +199,7 @@ CREATE TABLE teaching_assignments (
     class_id INT NOT NULL,
     subject_id INT NOT NULL,
     academic_year_id INT NOT NULL,
-    
+
     FOREIGN KEY (teacher_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
     FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE,
@@ -180,20 +208,20 @@ CREATE TABLE teaching_assignments (
 );
 
 -- =====================================================
--- TABLE 11: assessment_types
+-- TABLE 12: assessment_types
 -- =====================================================
 CREATE TABLE assessment_types (
     id INT PRIMARY KEY AUTO_INCREMENT,
     school_id INT NOT NULL,
     name VARCHAR(100) NOT NULL,
     default_weight_percent DECIMAL(5,2),
-    
+
     FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE,
     UNIQUE KEY unique_assessment_type (school_id, name)
 );
 
 -- =====================================================
--- TABLE 11b: weight_templates
+-- TABLE 12b: weight_templates
 -- =====================================================
 CREATE TABLE weight_templates (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -209,7 +237,7 @@ CREATE TABLE weight_templates (
 );
 
 -- =====================================================
--- TABLE 12: assessment_weights
+-- TABLE 13: assessment_weights
 -- =====================================================
 CREATE TABLE assessment_weights (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -217,7 +245,7 @@ CREATE TABLE assessment_weights (
     assessment_type_id INT NOT NULL,
     semester_id INT NOT NULL,
     weight_percent DECIMAL(5,2) NOT NULL,
-    
+
     FOREIGN KEY (teaching_assignment_id) REFERENCES teaching_assignments(id) ON DELETE CASCADE,
     FOREIGN KEY (assessment_type_id) REFERENCES assessment_types(id) ON DELETE CASCADE,
     FOREIGN KEY (semester_id) REFERENCES semesters(id) ON DELETE CASCADE,
@@ -225,7 +253,7 @@ CREATE TABLE assessment_weights (
 );
 
 -- =====================================================
--- TABLE 13: marks
+-- TABLE 14: marks
 -- =====================================================
 CREATE TABLE marks (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -237,7 +265,7 @@ CREATE TABLE marks (
     max_score DECIMAL(5,2) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
+
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
     FOREIGN KEY (teaching_assignment_id) REFERENCES teaching_assignments(id) ON DELETE CASCADE,
     FOREIGN KEY (assessment_type_id) REFERENCES assessment_types(id) ON DELETE CASCADE,
@@ -246,7 +274,7 @@ CREATE TABLE marks (
 );
 
 -- =====================================================
--- TABLE 14: grade_submissions
+-- TABLE 15: grade_submissions
 -- =====================================================
 CREATE TABLE grade_submissions (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -257,7 +285,7 @@ CREATE TABLE grade_submissions (
     reviewed_by INT NULL,
     reviewed_at TIMESTAMP NULL,
     comments TEXT,
-    
+
     FOREIGN KEY (teaching_assignment_id) REFERENCES teaching_assignments(id) ON DELETE CASCADE,
     FOREIGN KEY (semester_id) REFERENCES semesters(id) ON DELETE CASCADE,
     FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL,
@@ -265,7 +293,7 @@ CREATE TABLE grade_submissions (
 );
 
 -- =====================================================
--- TABLE 15: student_semester_results
+-- TABLE 16: student_semester_results
 -- =====================================================
 CREATE TABLE student_semester_results (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -279,14 +307,14 @@ CREATE TABLE student_semester_results (
     remark ENUM('Promoted', 'Not Promoted', 'Pending') DEFAULT 'Pending',
     is_published BOOLEAN DEFAULT FALSE,
     published_at TIMESTAMP NULL,
-    
+
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
     FOREIGN KEY (semester_id) REFERENCES semesters(id) ON DELETE CASCADE,
     UNIQUE KEY unique_result (student_id, semester_id)
 );
 
 -- =====================================================
--- TABLE 16: rosters
+-- TABLE 17: rosters
 -- =====================================================
 CREATE TABLE rosters (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -295,7 +323,7 @@ CREATE TABLE rosters (
     submitted_by INT NOT NULL,
     submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     roster_data JSON,
-    
+
     FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
     FOREIGN KEY (semester_id) REFERENCES semesters(id) ON DELETE CASCADE,
     FOREIGN KEY (submitted_by) REFERENCES users(id) ON DELETE CASCADE,
@@ -303,7 +331,7 @@ CREATE TABLE rosters (
 );
 
 -- =====================================================
--- TABLE 17: transcripts
+-- TABLE 18: transcripts
 -- =====================================================
 CREATE TABLE transcripts (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -311,13 +339,13 @@ CREATE TABLE transcripts (
     generated_by INT NOT NULL,
     generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     transcript_data JSON,
-    
+
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
     FOREIGN KEY (generated_by) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- =====================================================
--- TABLE 18: promotion_criteria
+-- TABLE 19: promotion_criteria
 -- =====================================================
 CREATE TABLE promotion_criteria (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -334,11 +362,15 @@ CREATE TABLE promotion_criteria (
 -- =====================================================
 CREATE INDEX idx_users_school ON users(school_id);
 CREATE INDEX idx_users_role ON users(role);
+CREATE INDEX idx_users_username ON users(username);
 CREATE INDEX idx_students_class ON students(class_id);
+CREATE INDEX idx_students_academic_year ON students(academic_year_id);
 CREATE INDEX idx_marks_student ON marks(student_id);
 CREATE INDEX idx_marks_semester ON marks(semester_id);
 CREATE INDEX idx_teaching_assignments_teacher ON teaching_assignments(teacher_id);
 CREATE INDEX idx_teaching_assignments_class ON teaching_assignments(class_id);
+CREATE INDEX idx_teachers_school ON teachers(school_id);
+CREATE INDEX idx_teachers_staff_code ON teachers(staff_code);
 
 -- =====================================================
 -- SCHEMA COMPLETE
