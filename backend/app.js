@@ -60,6 +60,7 @@ app.use('/api/v1/class-head', require('./src/routes/classHead'));
 app.use('/api/v1/student', require('./src/routes/student'));
 app.use('/api/v1/parent', require('./src/routes/parent'));
 app.use('/api/v1/store-house', require('./src/routes/storeHouse'));
+app.use('/api/v1/registrar', require('./src/routes/registrar'));
 
 // Error handling middleware
 app.use((err, req, res, next) => {

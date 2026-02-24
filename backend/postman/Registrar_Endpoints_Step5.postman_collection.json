@@ -1,0 +1,837 @@
+{
+  "info": {
+    "_postman_id": "4c96891b-f514-4fd9-aee7-9556f13e56e8",
+    "name": "School Portal - Registrar Endpoints (Step 5)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Postman collection for Step 5 registrar endpoints."
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.collectionVariables.get('timestamp')) {",
+          "  pm.collectionVariables.set('timestamp', Date.now().toString());",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000"
+    },
+    {
+      "key": "registrarUsername",
+      "value": "almaz.tadesse@school.edu.et"
+    },
+    {
+      "key": "registrarPassword",
+      "value": "SecurePass@123"
+    },
+    {
+      "key": "registrarToken",
+      "value": ""
+    },
+    {
+      "key": "studentId",
+      "value": "1"
+    },
+    {
+      "key": "teacherId",
+      "value": "1"
+    },
+    {
+      "key": "parentId",
+      "value": "1"
+    },
+    {
+      "key": "userIdToReset",
+      "value": "1"
+    },
+    {
+      "key": "gradeId",
+      "value": "1"
+    },
+    {
+      "key": "classId",
+      "value": "1"
+    },
+    {
+      "key": "academicYearId",
+      "value": "1"
+    },
+    {
+      "key": "timestamp",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login (Registrar) - Set registrarToken",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "if (json && json.data && json.data.access_token) {",
+                  "  pm.collectionVariables.set('registrarToken', json.data.access_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{registrarUsername}}\",\n  \"password\": \"{{registrarPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Change Password (If Required)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{registrarToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_password\": \"{{registrarPassword}}\",\n  \"new_password\": \"SecurePass@123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/change-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "change-password"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Students",
+      "item": [
+        {
+          "name": "Create Student",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{registrarToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Abebe\",\n  \"last_name\": \"Kebede\",\n  \"gender\": \"M\",\n  \"date_of_birth\": \"2008-05-15\",\n  \"grade_id\": {{gradeId}},\n  \"class_id\": {{classId}},\n  \"academic_year_id\": {{academicYearId}},\n  \"parent\": {\n    \"first_name\": \"Kebede\",\n    \"last_name\": \"Tessema\",\n    \"phone\": \"+251911234567\",\n    \"relationship\": \"father\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/registrar/students",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "registrar",
+                "students"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Students",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{registrarToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/registrar/students?page=1&limit=20&status=all&search=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "registrar",
+                "students"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "status",
+                  "value": "all"
+                },
+                {
+                  "key": "search",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Student",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{registrarToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/registrar/students/{{studentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "registrar",
+                "students",
+                "{{studentId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Student",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{registrarToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Abebe\",\n  \"last_name\": \"Kebede Updated\",\n  \"gender\": \"M\",\n  \"date_of_birth\": \"2008-05-15\",\n  \"class_id\": {{classId}},\n  \"parent\": {\n    \"first_name\": \"Kebede\",\n    \"last_name\": \"Tessema\",\n    \"phone\": \"+251911234567\",\n    \"relationship\": \"father\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/registrar/students/{{studentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "registrar",
+                "students",
+                "{{studentId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Deactivate Student",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{registrarToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Transferred\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/registrar/students/{{studentId}}/deactivate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "registrar",
+                "students",
+                "{{studentId}}",
+                "deactivate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Activate Student",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{registrarToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/registrar/students/{{studentId}}/activate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "registrar",
+                "students",
+                "{{studentId}}",
+                "activate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Upload Students (Excel)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{registrarToken}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": ""
+                },
+                {
+                  "key": "grade_id",
+                  "value": "{{gradeId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "class_id",
+                  "value": "{{classId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "academic_year_id",
+                  "value": "{{academicYearId}}",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/registrar/students/upload",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "registrar",
+                "students",
+                "upload"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Student Upload Template",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{registrarToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/registrar/students/upload/template",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "registrar",
+                "students",
+                "upload",
+                "template"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Teachers",
+      "item": [
+        {
+          "name": "Create Teacher",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{registrarToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Haile\",\n  \"last_name\": \"Mariam\",\n  \"gender\": \"M\",\n  \"date_of_birth\": \"1985-03-10\",\n  \"email\": \"haile.mariam{{timestamp}}@school.edu.et\",\n  \"phone\": \"+251944567890\",\n  \"qualification\": \"BSc in Mathematics\",\n  \"specialization\": \"Mathematics\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/registrar/teachers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "registrar",
+                "teachers"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Teachers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{registrarToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/registrar/teachers?page=1&limit=20&status=all&search=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "registrar",
+                "teachers"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "status",
+                  "value": "all"
+                },
+                {
+                  "key": "search",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Teacher",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{registrarToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/registrar/teachers/{{teacherId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "registrar",
+                "teachers",
+                "{{teacherId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Teacher",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{registrarToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Haile\",\n  \"last_name\": \"Mariam Updated\",\n  \"email\": \"haile.updated{{timestamp}}@school.edu.et\",\n  \"phone\": \"+251944567891\",\n  \"qualification\": \"MSc in Mathematics\",\n  \"specialization\": \"Mathematics, Physics\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/registrar/teachers/{{teacherId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "registrar",
+                "teachers",
+                "{{teacherId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Deactivate Teacher",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{registrarToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Contract ended\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/registrar/teachers/{{teacherId}}/deactivate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "registrar",
+                "teachers",
+                "{{teacherId}}",
+                "deactivate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Activate Teacher",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{registrarToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/registrar/teachers/{{teacherId}}/activate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "registrar",
+                "teachers",
+                "{{teacherId}}",
+                "activate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Upload Teachers (Excel)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{registrarToken}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/registrar/teachers/upload",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "registrar",
+                "teachers",
+                "upload"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Teacher Upload Template",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{registrarToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/registrar/teachers/upload/template",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "registrar",
+                "teachers",
+                "upload",
+                "template"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Parents + Utility",
+      "item": [
+        {
+          "name": "Reset User Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{registrarToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/registrar/users/{{userIdToReset}}/reset-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "registrar",
+                "users",
+                "{{userIdToReset}}",
+                "reset-password"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Parents",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{registrarToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/registrar/parents?page=1&limit=20&search=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "registrar",
+                "parents"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "search",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Parent",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{registrarToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/registrar/parents/{{parentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "registrar",
+                "parents",
+                "{{parentId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Parent",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{registrarToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Kebede\",\n  \"last_name\": \"Tessema Updated\",\n  \"phone\": \"+251911234568\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/registrar/parents/{{parentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "registrar",
+                "parents",
+                "{{parentId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Registrar Statistics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{registrarToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/registrar/statistics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "registrar",
+                "statistics"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
