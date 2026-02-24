@@ -1,0 +1,464 @@
+{
+  "info": {
+    "_postman_id": "a37f41a0-5d2c-4548-8bf2-3ce9c140fcaf",
+    "name": "School Portal - School Head Endpoints (Step 4)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Manual/Postman test collection for Backend Step 4: School Head management of Registrar and Store House users."
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.collectionVariables.get('timestamp')) {",
+          "  pm.collectionVariables.set('timestamp', Date.now().toString());",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000"
+    },
+    {
+      "key": "schoolHeadUsername",
+      "value": "kebede@aass.edu.et"
+    },
+    {
+      "key": "schoolHeadPassword",
+      "value": "password123"
+    },
+    {
+      "key": "schoolHeadToken",
+      "value": ""
+    },
+    {
+      "key": "registrarUserId",
+      "value": "1"
+    },
+    {
+      "key": "storeHouseUserId",
+      "value": "1"
+    },
+    {
+      "key": "timestamp",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login (School Head) - Set schoolHeadToken",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "if (json && json.data && json.data.access_token) {",
+                  "  pm.collectionVariables.set('schoolHeadToken', json.data.access_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{schoolHeadUsername}}\",\n  \"password\": \"{{schoolHeadPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Change Password (If Required)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{schoolHeadToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_password\": \"{{schoolHeadPassword}}\",\n  \"new_password\": \"SecurePass@123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/change-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "change-password"
+              ]
+            },
+            "description": "Use only if login response shows must_change_password=true."
+          }
+        }
+      ]
+    },
+    {
+      "name": "School Head - Registrars",
+      "item": [
+        {
+          "name": "Create Registrar",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{schoolHeadToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Almaz\",\n  \"last_name\": \"Tadesse\",\n  \"email\": \"almaz.tadesse{{timestamp}}@school.edu.et\",\n  \"phone\": \"+251922345678\",\n  \"gender\": \"F\",\n  \"password\": \"SecurePass@123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/school/registrars",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "school",
+                "registrars"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Registrars",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{schoolHeadToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/school/registrars?page=1&limit=20&status=all&search=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "school",
+                "registrars"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "status",
+                  "value": "all"
+                },
+                {
+                  "key": "search",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Registrar",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{schoolHeadToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Almaz\",\n  \"last_name\": \"Tadesse Updated\",\n  \"email\": \"almaz.updated{{timestamp}}@school.edu.et\",\n  \"phone\": \"+251922345679\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/school/registrars/{{registrarUserId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "school",
+                "registrars",
+                "{{registrarUserId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Deactivate Registrar",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{schoolHeadToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/school/registrars/{{registrarUserId}}/deactivate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "school",
+                "registrars",
+                "{{registrarUserId}}",
+                "deactivate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Activate Registrar",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{schoolHeadToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/school/registrars/{{registrarUserId}}/activate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "school",
+                "registrars",
+                "{{registrarUserId}}",
+                "activate"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "School Head - Store House Users",
+      "item": [
+        {
+          "name": "Create Store House User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{schoolHeadToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Daniel\",\n  \"last_name\": \"Hailu\",\n  \"email\": \"daniel.hailu{{timestamp}}@school.edu.et\",\n  \"phone\": \"+251933456789\",\n  \"gender\": \"M\",\n  \"password\": \"SecurePass@123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/school/store-house-users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "school",
+                "store-house-users"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Store House Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{schoolHeadToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/school/store-house-users?page=1&limit=20&status=all&search=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "school",
+                "store-house-users"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "status",
+                  "value": "all"
+                },
+                {
+                  "key": "search",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Store House User",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{schoolHeadToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Daniel\",\n  \"last_name\": \"Hailu Updated\",\n  \"email\": \"daniel.updated{{timestamp}}@school.edu.et\",\n  \"phone\": \"+251933456790\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/school/store-house-users/{{storeHouseUserId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "school",
+                "store-house-users",
+                "{{storeHouseUserId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Deactivate Store House User",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{schoolHeadToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/school/store-house-users/{{storeHouseUserId}}/deactivate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "school",
+                "store-house-users",
+                "{{storeHouseUserId}}",
+                "deactivate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Activate Store House User",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{schoolHeadToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/school/store-house-users/{{storeHouseUserId}}/activate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "school",
+                "store-house-users",
+                "{{storeHouseUserId}}",
+                "activate"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

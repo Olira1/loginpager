@@ -82,6 +82,24 @@ router.delete('/teaching-assignments/:assignment_id', schoolHeadController.delet
 // ==========================================
 router.get('/teachers', schoolHeadController.listTeachers);
 
+// ==========================================
+// REGISTRAR MANAGEMENT
+// ==========================================
+router.post('/registrars', schoolHeadController.createRegistrar);
+router.get('/registrars', schoolHeadController.listRegistrars);
+router.put('/registrars/:user_id', schoolHeadController.updateRegistrar);
+router.patch('/registrars/:user_id/deactivate', schoolHeadController.deactivateRegistrar);
+router.patch('/registrars/:user_id/activate', schoolHeadController.activateRegistrar);
+
+// ==========================================
+// STORE HOUSE USER MANAGEMENT
+// ==========================================
+router.post('/store-house-users', schoolHeadController.createStoreHouseUser);
+router.get('/store-house-users', schoolHeadController.listStoreHouseUsers);
+router.put('/store-house-users/:user_id', schoolHeadController.updateStoreHouseUser);
+router.patch('/store-house-users/:user_id/deactivate', schoolHeadController.deactivateStoreHouseUser);
+router.patch('/store-house-users/:user_id/activate', schoolHeadController.activateStoreHouseUser);
+
 module.exports = router;
 
 

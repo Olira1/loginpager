@@ -3,6 +3,8 @@
 // All operations are scoped to the school from JWT token
 
 const { pool } = require('../config/db');
+const bcrypt = require('bcryptjs');
+const { validatePasswordStrength } = require('../utils/passwordGenerator');
 
 // Helper to get current academic year
 const getCurrentAcademicYear = async () => {
@@ -1947,6 +1949,425 @@ const removeClassHead = async (req, res) => {
   }
 };
 
+// ==========================================
+// REGISTRAR & STORE HOUSE USER MANAGEMENT
+// ==========================================
+
+const createSchoolUser = async (req, res, role) => {
+  try {
+    const schoolId = req.user.school_id;
+    const {
+      first_name,
+      last_name,
+      email,
+      phone,
+      gender,
+      password
+    } = req.body;
+
+    if (!first_name || !last_name || !email || !phone || !gender || !password) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'first_name, last_name, email, phone, gender, and password are required.'
+        }
+      });
+    }
+
+    if (!['M', 'F'].includes(gender)) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Gender must be M or F.'
+        }
+      });
+    }
+
+    const passwordCheck = validatePasswordStrength(password);
+    if (!passwordCheck.valid) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: passwordCheck.message
+        }
+      });
+    }
+
+    const [emailExists] = await pool.query(
+      'SELECT id FROM users WHERE email = ? LIMIT 1',
+      [email]
+    );
+    if (emailExists.length > 0) {
+      return res.status(409).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'CONFLICT',
+          message: 'Email already exists.'
+        }
+      });
+    }
+
+    const [schoolRows] = await pool.query(
+      'SELECT id, name FROM schools WHERE id = ?',
+      [schoolId]
+    );
+    if (schoolRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'School not found.'
+        }
+      });
+    }
+
+    const fullName = `${first_name} ${last_name}`.trim();
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const [result] = await pool.query(
+      `INSERT INTO users
+        (name, first_name, last_name, username, email, password, phone, gender, role, school_id, is_active, must_change_password)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true, true)`,
+      [fullName, first_name, last_name, email, email, hashedPassword, phone, gender, role, schoolId]
+    );
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        id: result.insertId,
+        first_name,
+        last_name,
+        full_name: fullName,
+        email,
+        phone,
+        gender,
+        role,
+        school: {
+          id: schoolRows[0].id,
+          name: schoolRows[0].name
+        },
+        must_change_password: true,
+        status: 'active',
+        created_at: new Date().toISOString()
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error(`Create ${role} error:`, error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: `Failed to create ${role}.`
+      }
+    });
+  }
+};
+
+const listSchoolUsers = async (req, res, role) => {
+  try {
+    const schoolId = req.user.school_id;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
+    const status = req.query.status || 'all';
+    const search = req.query.search || '';
+
+    let whereClause = 'school_id = ? AND role = ?';
+    const params = [schoolId, role];
+
+    if (status === 'active') {
+      whereClause += ' AND is_active = true';
+    } else if (status === 'inactive') {
+      whereClause += ' AND is_active = false';
+    }
+
+    if (search) {
+      whereClause += ' AND (name LIKE ? OR email LIKE ?)';
+      params.push(`%${search}%`, `%${search}%`);
+    }
+
+    const [countRows] = await pool.query(
+      `SELECT COUNT(*) as total FROM users WHERE ${whereClause}`,
+      params
+    );
+    const totalItems = countRows[0].total;
+    const totalPages = Math.ceil(totalItems / limit);
+
+    const [rows] = await pool.query(
+      `SELECT id, name, email, phone, gender, role, is_active, created_at
+       FROM users
+       WHERE ${whereClause}
+       ORDER BY created_at DESC
+       LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        items: rows.map((u) => ({
+          id: u.id,
+          full_name: u.name,
+          email: u.email,
+          phone: u.phone,
+          gender: u.gender,
+          role: u.role,
+          status: u.is_active ? 'active' : 'inactive',
+          created_at: u.created_at
+        })),
+        pagination: {
+          page,
+          limit,
+          total_items: totalItems,
+          total_pages: totalPages
+        }
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error(`List ${role} users error:`, error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: `Failed to fetch ${role} users.`
+      }
+    });
+  }
+};
+
+const updateSchoolUser = async (req, res, role, notFoundMessage) => {
+  try {
+    const schoolId = req.user.school_id;
+    const { user_id } = req.params;
+    const { first_name, last_name, email, phone, gender } = req.body;
+
+    const [existingRows] = await pool.query(
+      'SELECT id, first_name, last_name FROM users WHERE id = ? AND school_id = ? AND role = ?',
+      [user_id, schoolId, role]
+    );
+    if (existingRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'NOT_FOUND',
+          message: notFoundMessage
+        }
+      });
+    }
+
+    if (gender !== undefined && !['M', 'F'].includes(gender)) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Gender must be M or F.'
+        }
+      });
+    }
+
+    if (email !== undefined) {
+      const [emailRows] = await pool.query(
+        'SELECT id FROM users WHERE email = ? AND id <> ? LIMIT 1',
+        [email, user_id]
+      );
+      if (emailRows.length > 0) {
+        return res.status(409).json({
+          success: false,
+          data: null,
+          error: {
+            code: 'CONFLICT',
+            message: 'Email already in use by another user.'
+          }
+        });
+      }
+    }
+
+    const updates = [];
+    const params = [];
+
+    if (first_name !== undefined) { updates.push('first_name = ?'); params.push(first_name); }
+    if (last_name !== undefined) { updates.push('last_name = ?'); params.push(last_name); }
+    if (email !== undefined) {
+      updates.push('email = ?');
+      params.push(email);
+      updates.push('username = ?');
+      params.push(email);
+    }
+    if (phone !== undefined) { updates.push('phone = ?'); params.push(phone); }
+    if (gender !== undefined) { updates.push('gender = ?'); params.push(gender); }
+
+    if (updates.length === 0) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'No fields to update.'
+        }
+      });
+    }
+
+    if (first_name !== undefined || last_name !== undefined) {
+      const currentFirst = first_name !== undefined ? first_name : existingRows[0].first_name;
+      const currentLast = last_name !== undefined ? last_name : existingRows[0].last_name;
+      updates.push('name = ?');
+      params.push(`${currentFirst || ''} ${currentLast || ''}`.trim());
+    }
+
+    params.push(user_id, schoolId, role);
+    await pool.query(
+      `UPDATE users SET ${updates.join(', ')}
+       WHERE id = ? AND school_id = ? AND role = ?`,
+      params
+    );
+
+    const [updatedRows] = await pool.query(
+      `SELECT id, first_name, last_name, name, email, phone, updated_at
+       FROM users
+       WHERE id = ? AND school_id = ? AND role = ?`,
+      [user_id, schoolId, role]
+    );
+    const u = updatedRows[0];
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: u.id,
+        first_name: u.first_name,
+        last_name: u.last_name,
+        full_name: u.name,
+        email: u.email,
+        phone: u.phone,
+        updated_at: u.updated_at
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error(`Update ${role} user error:`, error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: `Failed to update ${role} user.`
+      }
+    });
+  }
+};
+
+const changeSchoolUserStatus = async (req, res, role, activate, notFoundMessage) => {
+  try {
+    const schoolId = req.user.school_id;
+    const { user_id } = req.params;
+
+    const [rows] = await pool.query(
+      'SELECT id, name, is_active FROM users WHERE id = ? AND school_id = ? AND role = ?',
+      [user_id, schoolId, role]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'NOT_FOUND',
+          message: notFoundMessage
+        }
+      });
+    }
+
+    if (activate && rows[0].is_active) {
+      return res.status(409).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'CONFLICT',
+          message: 'User is already active.'
+        }
+      });
+    }
+
+    if (!activate && !rows[0].is_active) {
+      return res.status(409).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'CONFLICT',
+          message: 'User is already inactive.'
+        }
+      });
+    }
+
+    await pool.query(
+      'UPDATE users SET is_active = ?, deactivated_at = ? WHERE id = ? AND school_id = ? AND role = ?',
+      [activate, activate ? null : new Date(), user_id, schoolId, role]
+    );
+
+    const status = activate ? 'active' : 'inactive';
+    const timeKey = activate ? 'activated_at' : 'deactivated_at';
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: parseInt(user_id),
+        full_name: rows[0].name,
+        status,
+        [timeKey]: new Date().toISOString()
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error(`Change ${role} status error:`, error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: `Failed to update ${role} status.`
+      }
+    });
+  }
+};
+
+// Registrar endpoints
+const createRegistrar = async (req, res) => createSchoolUser(req, res, 'registrar');
+const listRegistrars = async (req, res) => listSchoolUsers(req, res, 'registrar');
+const updateRegistrar = async (req, res) => {
+  return updateSchoolUser(req, res, 'registrar', 'Registrar not found or does not belong to this school.');
+};
+const deactivateRegistrar = async (req, res) => {
+  return changeSchoolUserStatus(req, res, 'registrar', false, 'Registrar not found or does not belong to this school.');
+};
+const activateRegistrar = async (req, res) => {
+  return changeSchoolUserStatus(req, res, 'registrar', true, 'Registrar not found or does not belong to this school.');
+};
+
+// Store house user endpoints
+const createStoreHouseUser = async (req, res) => createSchoolUser(req, res, 'store_house');
+const listStoreHouseUsers = async (req, res) => listSchoolUsers(req, res, 'store_house');
+const updateStoreHouseUser = async (req, res) => {
+  return updateSchoolUser(req, res, 'store_house', 'Store house user not found or does not belong to this school.');
+};
+const deactivateStoreHouseUser = async (req, res) => {
+  return changeSchoolUserStatus(req, res, 'store_house', false, 'Store house user not found or does not belong to this school.');
+};
+const activateStoreHouseUser = async (req, res) => {
+  return changeSchoolUserStatus(req, res, 'store_house', true, 'Store house user not found or does not belong to this school.');
+};
+
 module.exports = {
   // Grades
   listGrades, getGrade, createGrade, updateGrade, deleteGrade,
@@ -1967,7 +2388,11 @@ module.exports = {
   // Teachers
   listTeachers,
   // Class Head
-  assignClassHead, removeClassHead
+  assignClassHead, removeClassHead,
+  // Registrars
+  createRegistrar, listRegistrars, updateRegistrar, deactivateRegistrar, activateRegistrar,
+  // Store House Users
+  createStoreHouseUser, listStoreHouseUsers, updateStoreHouseUser, deactivateStoreHouseUser, activateStoreHouseUser
 };
 
 
