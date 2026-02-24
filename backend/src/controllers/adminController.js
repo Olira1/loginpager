@@ -2,6 +2,8 @@
 // Handles school management, promotion criteria, and platform statistics
 
 const { pool } = require('../config/db');
+const bcrypt = require('bcryptjs');
+const { validatePasswordStrength } = require('../utils/passwordGenerator');
 
 // ==========================================
 // SCHOOL MANAGEMENT
@@ -606,6 +608,712 @@ const deactivateSchool = async (req, res) => {
 };
 
 // ==========================================
+// SCHOOL HEAD MANAGEMENT
+// ==========================================
+
+/**
+ * POST /api/v1/admin/school-heads
+ * Create school head user and attach to school
+ */
+const createSchoolHead = async (req, res) => {
+  let connection;
+  try {
+    const {
+      first_name,
+      last_name,
+      email,
+      phone,
+      gender,
+      password,
+      school_id
+    } = req.body;
+
+    if (!first_name || !last_name || !email || !phone || !gender || !password || !school_id) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'first_name, last_name, email, phone, gender, password, and school_id are required.'
+        }
+      });
+    }
+
+    if (!['M', 'F'].includes(gender)) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Gender must be M or F.'
+        }
+      });
+    }
+
+    const passwordCheck = validatePasswordStrength(password);
+    if (!passwordCheck.valid) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: passwordCheck.message
+        }
+      });
+    }
+
+    const [schoolRows] = await pool.query(
+      'SELECT id, name, status FROM schools WHERE id = ?',
+      [school_id]
+    );
+
+    if (schoolRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'School not found.'
+        }
+      });
+    }
+
+    if (schoolRows[0].status !== 'active') {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'School must be active to assign a school head.'
+        }
+      });
+    }
+
+    const [emailExists] = await pool.query(
+      'SELECT id FROM users WHERE email = ? LIMIT 1',
+      [email]
+    );
+    if (emailExists.length > 0) {
+      return res.status(409).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'CONFLICT',
+          message: 'Email already exists.'
+        }
+      });
+    }
+
+    const [activeHead] = await pool.query(
+      `SELECT id FROM users
+       WHERE role = 'school_head' AND school_id = ? AND is_active = true
+       LIMIT 1`,
+      [school_id]
+    );
+    if (activeHead.length > 0) {
+      return res.status(409).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'CONFLICT',
+          message: 'School already has an active school head.'
+        }
+      });
+    }
+
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    const fullName = `${first_name} ${last_name}`.trim();
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const [insertResult] = await connection.query(
+      `INSERT INTO users
+        (name, first_name, last_name, username, email, password, phone, gender, role, school_id, is_active, must_change_password)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'school_head', ?, true, true)`,
+      [fullName, first_name, last_name, email, email, hashedPassword, phone, gender, school_id]
+    );
+
+    await connection.query(
+      'UPDATE schools SET school_head_id = ? WHERE id = ?',
+      [insertResult.insertId, school_id]
+    );
+
+    await connection.commit();
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        id: insertResult.insertId,
+        first_name,
+        last_name,
+        full_name: fullName,
+        email,
+        phone,
+        gender,
+        role: 'school_head',
+        school: {
+          id: schoolRows[0].id,
+          name: schoolRows[0].name
+        },
+        must_change_password: true,
+        status: 'active',
+        created_at: new Date().toISOString()
+      },
+      error: null
+    });
+  } catch (error) {
+    if (connection) await connection.rollback();
+    console.error('Create school head error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'An error occurred while creating school head.'
+      }
+    });
+  } finally {
+    if (connection) connection.release();
+  }
+};
+
+/**
+ * GET /api/v1/admin/school-heads
+ * List school heads with pagination and filters
+ */
+const listSchoolHeads = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
+    const status = req.query.status || 'all';
+    const schoolId = req.query.school_id;
+    const search = req.query.search || '';
+
+    let whereClause = "u.role = 'school_head'";
+    const params = [];
+
+    if (status === 'active') {
+      whereClause += ' AND u.is_active = true';
+    } else if (status === 'inactive') {
+      whereClause += ' AND u.is_active = false';
+    }
+
+    if (schoolId) {
+      whereClause += ' AND u.school_id = ?';
+      params.push(schoolId);
+    }
+
+    if (search) {
+      whereClause += ' AND (u.name LIKE ? OR u.email LIKE ?)';
+      params.push(`%${search}%`, `%${search}%`);
+    }
+
+    const [countResult] = await pool.query(
+      `SELECT COUNT(*) as total FROM users u WHERE ${whereClause}`,
+      params
+    );
+    const totalItems = countResult[0].total;
+    const totalPages = Math.ceil(totalItems / limit);
+
+    const [rows] = await pool.query(
+      `SELECT u.id, u.name, u.first_name, u.last_name, u.email, u.phone, u.gender, u.role, u.school_id,
+              u.is_active, u.created_at, s.name as school_name
+       FROM users u
+       LEFT JOIN schools s ON s.id = u.school_id
+       WHERE ${whereClause}
+       ORDER BY u.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        items: rows.map((u) => ({
+          id: u.id,
+          full_name: u.name,
+          email: u.email,
+          phone: u.phone,
+          gender: u.gender,
+          role: u.role,
+          school: u.school_id ? {
+            id: u.school_id,
+            name: u.school_name
+          } : null,
+          status: u.is_active ? 'active' : 'inactive',
+          created_at: u.created_at
+        })),
+        pagination: {
+          page,
+          limit,
+          total_items: totalItems,
+          total_pages: totalPages
+        }
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error('List school heads error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'An error occurred while fetching school heads.'
+      }
+    });
+  }
+};
+
+/**
+ * GET /api/v1/admin/school-heads/:user_id
+ * Get one school head details
+ */
+const getSchoolHead = async (req, res) => {
+  try {
+    const { user_id } = req.params;
+
+    const [rows] = await pool.query(
+      `SELECT u.id, u.name, u.first_name, u.last_name, u.email, u.phone, u.gender, u.role,
+              u.school_id, u.is_active, u.must_change_password, u.created_at, u.updated_at,
+              s.name as school_name
+       FROM users u
+       LEFT JOIN schools s ON s.id = u.school_id
+       WHERE u.id = ? AND u.role = 'school_head'`,
+      [user_id]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'School head not found.'
+        }
+      });
+    }
+
+    const u = rows[0];
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: u.id,
+        first_name: u.first_name,
+        last_name: u.last_name,
+        full_name: u.name,
+        email: u.email,
+        phone: u.phone,
+        gender: u.gender,
+        role: u.role,
+        school: u.school_id ? {
+          id: u.school_id,
+          name: u.school_name
+        } : null,
+        status: u.is_active ? 'active' : 'inactive',
+        must_change_password: !!u.must_change_password,
+        created_at: u.created_at,
+        updated_at: u.updated_at
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error('Get school head error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'An error occurred while fetching school head.'
+      }
+    });
+  }
+};
+
+/**
+ * PUT /api/v1/admin/school-heads/:user_id
+ * Update school head details
+ */
+const updateSchoolHead = async (req, res) => {
+  let connection;
+  try {
+    const { user_id } = req.params;
+    const { first_name, last_name, email, phone, gender, school_id } = req.body;
+
+    const [existing] = await pool.query(
+      `SELECT id, school_id FROM users
+       WHERE id = ? AND role = 'school_head'`,
+      [user_id]
+    );
+    if (existing.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'School head not found.'
+        }
+      });
+    }
+
+    if (gender !== undefined && !['M', 'F'].includes(gender)) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Gender must be M or F.'
+        }
+      });
+    }
+
+    if (email !== undefined) {
+      const [emailExists] = await pool.query(
+        'SELECT id FROM users WHERE email = ? AND id <> ? LIMIT 1',
+        [email, user_id]
+      );
+      if (emailExists.length > 0) {
+        return res.status(409).json({
+          success: false,
+          data: null,
+          error: {
+            code: 'CONFLICT',
+            message: 'Email already in use by another user.'
+          }
+        });
+      }
+    }
+
+    let targetSchool = null;
+    if (school_id !== undefined) {
+      const [schoolRows] = await pool.query(
+        'SELECT id, name, status FROM schools WHERE id = ?',
+        [school_id]
+      );
+      if (schoolRows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          data: null,
+          error: {
+            code: 'NOT_FOUND',
+            message: 'School not found.'
+          }
+        });
+      }
+      if (schoolRows[0].status !== 'active') {
+        return res.status(400).json({
+          success: false,
+          data: null,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'School must be active to assign a school head.'
+          }
+        });
+      }
+
+      const [activeHead] = await pool.query(
+        `SELECT id FROM users
+         WHERE role = 'school_head' AND school_id = ? AND is_active = true AND id <> ?
+         LIMIT 1`,
+        [school_id, user_id]
+      );
+      if (activeHead.length > 0) {
+        return res.status(409).json({
+          success: false,
+          data: null,
+          error: {
+            code: 'CONFLICT',
+            message: 'School already has an active school head.'
+          }
+        });
+      }
+      targetSchool = schoolRows[0];
+    }
+
+    const updates = [];
+    const params = [];
+    if (first_name !== undefined) { updates.push('first_name = ?'); params.push(first_name); }
+    if (last_name !== undefined) { updates.push('last_name = ?'); params.push(last_name); }
+    if (email !== undefined) {
+      updates.push('email = ?');
+      params.push(email);
+      updates.push('username = ?');
+      params.push(email);
+    }
+    if (phone !== undefined) { updates.push('phone = ?'); params.push(phone); }
+    if (gender !== undefined) { updates.push('gender = ?'); params.push(gender); }
+    if (school_id !== undefined) { updates.push('school_id = ?'); params.push(school_id); }
+
+    if (updates.length === 0) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'No fields to update.'
+        }
+      });
+    }
+
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    if (first_name !== undefined || last_name !== undefined) {
+      const [nameRows] = await connection.query(
+        'SELECT first_name, last_name FROM users WHERE id = ?',
+        [user_id]
+      );
+      const updatedFirst = first_name !== undefined ? first_name : nameRows[0].first_name;
+      const updatedLast = last_name !== undefined ? last_name : nameRows[0].last_name;
+      updates.push('name = ?');
+      params.push(`${updatedFirst || ''} ${updatedLast || ''}`.trim());
+    }
+
+    params.push(user_id);
+    await connection.query(
+      `UPDATE users SET ${updates.join(', ')} WHERE id = ?`,
+      params
+    );
+
+    if (school_id !== undefined) {
+      await connection.query(
+        'UPDATE schools SET school_head_id = NULL WHERE school_head_id = ?',
+        [user_id]
+      );
+      await connection.query(
+        'UPDATE schools SET school_head_id = ? WHERE id = ?',
+        [user_id, school_id]
+      );
+    }
+
+    const [updatedRows] = await connection.query(
+      `SELECT u.id, u.name, u.first_name, u.last_name, u.email, u.phone, u.gender, u.school_id, u.updated_at,
+              s.name as school_name
+       FROM users u
+       LEFT JOIN schools s ON s.id = u.school_id
+       WHERE u.id = ?`,
+      [user_id]
+    );
+
+    await connection.commit();
+
+    const u = updatedRows[0];
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: u.id,
+        first_name: u.first_name,
+        last_name: u.last_name,
+        full_name: u.name,
+        email: u.email,
+        phone: u.phone,
+        gender: u.gender,
+        school: u.school_id ? { id: u.school_id, name: u.school_name } : null,
+        updated_at: u.updated_at
+      },
+      error: null
+    });
+  } catch (error) {
+    if (connection) await connection.rollback();
+    console.error('Update school head error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'An error occurred while updating school head.'
+      }
+    });
+  } finally {
+    if (connection) connection.release();
+  }
+};
+
+/**
+ * PATCH /api/v1/admin/school-heads/:user_id/deactivate
+ * Deactivate school head account
+ */
+const deactivateSchoolHead = async (req, res) => {
+  let connection;
+  try {
+    const { user_id } = req.params;
+
+    const [rows] = await pool.query(
+      `SELECT id, name, is_active
+       FROM users
+       WHERE id = ? AND role = 'school_head'`,
+      [user_id]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'School head not found.'
+        }
+      });
+    }
+
+    if (!rows[0].is_active) {
+      return res.status(409).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'CONFLICT',
+          message: 'School head is already inactive.'
+        }
+      });
+    }
+
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    await connection.query(
+      'UPDATE users SET is_active = false, deactivated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [user_id]
+    );
+    await connection.query(
+      'UPDATE schools SET school_head_id = NULL WHERE school_head_id = ?',
+      [user_id]
+    );
+
+    await connection.commit();
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: parseInt(user_id),
+        full_name: rows[0].name,
+        status: 'inactive',
+        deactivated_at: new Date().toISOString()
+      },
+      error: null
+    });
+  } catch (error) {
+    if (connection) await connection.rollback();
+    console.error('Deactivate school head error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'An error occurred while deactivating school head.'
+      }
+    });
+  } finally {
+    if (connection) connection.release();
+  }
+};
+
+/**
+ * PATCH /api/v1/admin/school-heads/:user_id/activate
+ * Activate school head account
+ */
+const activateSchoolHead = async (req, res) => {
+  let connection;
+  try {
+    const { user_id } = req.params;
+
+    const [rows] = await pool.query(
+      `SELECT id, name, school_id, is_active
+       FROM users
+       WHERE id = ? AND role = 'school_head'`,
+      [user_id]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'School head not found.'
+        }
+      });
+    }
+
+    if (rows[0].is_active) {
+      return res.status(409).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'CONFLICT',
+          message: 'School head is already active.'
+        }
+      });
+    }
+
+    if (!rows[0].school_id) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'School head has no school assignment.'
+        }
+      });
+    }
+
+    const [otherActive] = await pool.query(
+      `SELECT id FROM users
+       WHERE role = 'school_head' AND school_id = ? AND is_active = true AND id <> ?
+       LIMIT 1`,
+      [rows[0].school_id, user_id]
+    );
+    if (otherActive.length > 0) {
+      return res.status(409).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'CONFLICT',
+          message: 'School already has an active school head.'
+        }
+      });
+    }
+
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    await connection.query(
+      'UPDATE users SET is_active = true, deactivated_at = NULL WHERE id = ?',
+      [user_id]
+    );
+    await connection.query(
+      'UPDATE schools SET school_head_id = ? WHERE id = ?',
+      [user_id, rows[0].school_id]
+    );
+
+    await connection.commit();
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: parseInt(user_id),
+        full_name: rows[0].name,
+        status: 'active',
+        activated_at: new Date().toISOString()
+      },
+      error: null
+    });
+  } catch (error) {
+    if (connection) await connection.rollback();
+    console.error('Activate school head error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'An error occurred while activating school head.'
+      }
+    });
+  } finally {
+    if (connection) connection.release();
+  }
+};
+
+// ==========================================
 // PROMOTION CRITERIA MANAGEMENT
 // ==========================================
 
@@ -977,6 +1685,13 @@ module.exports = {
   deleteSchool,
   activateSchool,
   deactivateSchool,
+  // School Heads
+  createSchoolHead,
+  listSchoolHeads,
+  getSchoolHead,
+  updateSchoolHead,
+  deactivateSchoolHead,
+  activateSchoolHead,
   // Promotion Criteria
   listPromotionCriteria,
   getPromotionCriteria,

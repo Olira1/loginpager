@@ -63,6 +63,16 @@ router.patch('/schools/:school_id/activate', adminController.activateSchool);
 router.patch('/schools/:school_id/deactivate', adminController.deactivateSchool);
 
 // ==========================================
+// SCHOOL HEAD MANAGEMENT
+// ==========================================
+router.post('/school-heads', adminController.createSchoolHead);
+router.get('/school-heads', adminController.listSchoolHeads);
+router.get('/school-heads/:user_id', adminController.getSchoolHead);
+router.put('/school-heads/:user_id', adminController.updateSchoolHead);
+router.patch('/school-heads/:user_id/deactivate', adminController.deactivateSchoolHead);
+router.patch('/school-heads/:user_id/activate', adminController.activateSchoolHead);
+
+// ==========================================
 // PROMOTION CRITERIA
 // ==========================================
 
