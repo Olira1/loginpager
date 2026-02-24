@@ -14,7 +14,7 @@ const Login = () => {
   const { login, isAuthenticated, isLoading: authLoading, getRedirectPath } = useAuth();
 
   // Form state
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -26,12 +26,10 @@ const Login = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  // Check for school suspended redirect message
-  useEffect(() => {
-    if (searchParams.get('error') === 'school_suspended') {
-      setError('Your school has been suspended. Contact the platform administrator.');
-    }
-  }, [searchParams]);
+  const suspendedMessage =
+    searchParams.get('error') === 'school_suspended'
+      ? 'Your school has been suspended. Contact the platform administrator.'
+      : '';
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -46,8 +44,8 @@ const Login = () => {
     setError('');
 
     // Validation
-    if (!email.trim()) {
-      setError('Email is required');
+    if (!username.trim()) {
+      setError('Username is required');
       return;
     }
     if (!password) {
@@ -57,7 +55,7 @@ const Login = () => {
 
     setIsSubmitting(true);
 
-    const result = await login(email, password, rememberMe);
+    const result = await login(username, password, rememberMe);
 
     if (result.success) {
       // Redirect based on user role
@@ -94,32 +92,32 @@ const Login = () => {
         </div>
 
         {/* Error Message */}
-        {error && (
+        {(error || suspendedMessage) && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-3 text-red-700">
             <AlertCircle className="w-5 h-5 flex-shrink-0" />
-            <span className="text-sm">{error}</span>
+            <span className="text-sm">{error || suspendedMessage}</span>
           </div>
         )}
 
         {/* Login Form */}
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Email Field */}
+          {/* Username Field */}
           <div>
             <label 
-              htmlFor="email" 
+              htmlFor="username" 
               className="block text-sm font-medium text-gray-700 mb-1.5"
             >
-              Email
+              Username
             </label>
             <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Enter your email"
+              id="username"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Email, Student ID, Staff ID, or Phone"
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors"
               disabled={isSubmitting}
-              autoComplete="email"
+              autoComplete="username"
             />
           </div>
 

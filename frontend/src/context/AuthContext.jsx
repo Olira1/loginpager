@@ -2,7 +2,12 @@
 // Provides user, login, logout functions to all components
 
 import { createContext, useContext, useState, useEffect } from 'react';
-import { login as loginApi, getCurrentUser, logout as logoutApi } from '../services/authService';
+import {
+  login as loginApi,
+  getCurrentUser,
+  logout as logoutApi,
+  changePassword as changePasswordApi
+} from '../services/authService';
 
 // Create the context
 const AuthContext = createContext(null);
@@ -16,6 +21,7 @@ const ROLE_PATHS = {
   student: '/student',
   parent: '/parent',
   store_house: '/store-house',
+  registrar: '/registrar',
 };
 
 /**
@@ -27,6 +33,19 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  /**
+   * Clear all auth data from state and storage
+   */
+  const clearAuth = () => {
+    setUser(null);
+    setToken(null);
+    setIsAuthenticated(false);
+    localStorage.removeItem('token');
+    sessionStorage.removeItem('token');
+    localStorage.removeItem('user');
+    sessionStorage.removeItem('user');
+  };
 
   // Check for existing token on app load
   useEffect(() => {
@@ -68,28 +87,15 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   /**
-   * Clear all auth data from state and storage
-   */
-  const clearAuth = () => {
-    setUser(null);
-    setToken(null);
-    setIsAuthenticated(false);
-    localStorage.removeItem('token');
-    sessionStorage.removeItem('token');
-    localStorage.removeItem('user');
-    sessionStorage.removeItem('user');
-  };
-
-  /**
    * Login function
-   * @param {string} email - User email
+   * @param {string} username - Email, student code, staff code, or phone
    * @param {string} password - User password
    * @param {boolean} remember - If true, store in localStorage, else sessionStorage
    * @returns {Object} - { success: boolean, error?: string, redirectPath?: string }
    */
-  const login = async (email, password, remember = false) => {
+  const login = async (username, password, remember = false) => {
     try {
-      const response = await loginApi(email, password);
+      const response = await loginApi(username, password);
       
       if (response.success) {
         const { access_token, user: userData } = response.data;
@@ -108,6 +114,11 @@ export const AuthProvider = ({ children }) => {
         setUser(userData);
         setIsAuthenticated(true);
         
+        // Enforce first-login password update flow
+        if (userData.must_change_password) {
+          return { success: true, redirectPath: '/change-password', mustChangePassword: true };
+        }
+
         // Get redirect path based on role
         const redirectPath = ROLE_PATHS[userData.role] || '/dashboard';
         
@@ -120,8 +131,48 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (error) {
       // Handle API errors
-      const errorMessage = error.response?.data?.error?.message || 'Invalid email or password';
+      const errorMessage = error.response?.data?.error?.message || 'Invalid username or password';
       return { success: false, error: errorMessage };
+    }
+  };
+
+  /**
+   * Change password for current user
+   */
+  const changePassword = async (currentPassword, newPassword, confirmPassword) => {
+    try {
+      const response = await changePasswordApi(currentPassword, newPassword, confirmPassword);
+      if (!response.success) {
+        return {
+          success: false,
+          error: response.error?.message || 'Password change failed'
+        };
+      }
+
+      const refreshed = await getCurrentUser();
+      if (refreshed.success) {
+        const updatedUser = refreshed.data;
+        setUser(updatedUser);
+
+        if (localStorage.getItem('token')) {
+          localStorage.setItem('user', JSON.stringify(updatedUser));
+        }
+        if (sessionStorage.getItem('token')) {
+          sessionStorage.setItem('user', JSON.stringify(updatedUser));
+        }
+
+        return {
+          success: true,
+          redirectPath: ROLE_PATHS[updatedUser.role] || '/dashboard'
+        };
+      }
+
+      return { success: true, redirectPath: '/dashboard' };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.response?.data?.error?.message || 'Password change failed'
+      };
     }
   };
 
@@ -158,6 +209,7 @@ export const AuthProvider = ({ children }) => {
     isAuthenticated,
     login,
     logout,
+    changePassword,
     getRedirectPath,
   };
 
@@ -172,6 +224,7 @@ export const AuthProvider = ({ children }) => {
  * Custom hook to use auth context
  * @returns {Object} - Auth context value
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => {
   const context = useContext(AuthContext);
   

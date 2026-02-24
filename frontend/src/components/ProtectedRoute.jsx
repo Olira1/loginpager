@@ -34,6 +34,11 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+  // Force users to change temporary password before accessing protected pages
+  if (user?.must_change_password && location.pathname !== '/change-password') {
+    return <Navigate to="/change-password" replace />;
+  }
+
   // Check role access if allowedRoles is specified
   if (allowedRoles) {
     const roles = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
@@ -48,6 +53,7 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
         student: '/student',
         parent: '/parent',
         store_house: '/store-house',
+        registrar: '/registrar',
       };
       
       const redirectPath = roleRedirects[user?.role] || '/dashboard';
