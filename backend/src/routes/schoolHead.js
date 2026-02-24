@@ -2,10 +2,11 @@
 const express = require('express');
 const router = express.Router();
 const schoolHeadController = require('../controllers/schoolHeadController');
-const { verifyToken, checkRole } = require('../middleware/auth');
+const { verifyToken, checkRole, checkPasswordChanged } = require('../middleware/auth');
 
 // All routes require authentication and school_head role
 router.use(verifyToken);
+router.use(checkPasswordChanged);
 router.use(checkRole('school_head'));
 
 // ==========================================

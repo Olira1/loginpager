@@ -31,9 +31,8 @@ const verifyToken = async (req, res, next) => {
     // Verify token
     const decoded = jwt.verify(token, jwtConfig.secret);
 
-    // Get user from database to ensure they still exist and are active
     const [users] = await pool.query(
-      'SELECT id, name, email, phone, role, school_id, is_active FROM users WHERE id = ?',
+      'SELECT id, name, email, phone, role, school_id, is_active, must_change_password FROM users WHERE id = ?',
       [decoded.user_id]
     );
 
@@ -80,14 +79,14 @@ const verifyToken = async (req, res, next) => {
       }
     }
 
-    // Attach user to request object
     req.user = {
       id: user.id,
       name: user.name,
       email: user.email,
       phone: user.phone,
       role: user.role,
-      school_id: user.school_id
+      school_id: user.school_id,
+      must_change_password: !!user.must_change_password,
     };
 
     next();
@@ -202,10 +201,41 @@ const checkSchoolAccess = (req, res, next) => {
   next();
 };
 
+/**
+ * Middleware that blocks access when the user still needs to change their
+ * temporary password.  Allows only /auth/change-password and /auth/logout.
+ */
+const checkPasswordChanged = (req, res, next) => {
+  if (!req.user) {
+    return next();
+  }
+
+  if (!req.user.must_change_password) {
+    return next();
+  }
+
+  const allowedPaths = ['/auth/change-password', '/auth/logout'];
+  const path = req.originalUrl.replace(/^\/api\/v1/, '');
+
+  if (allowedPaths.some((p) => path.startsWith(p))) {
+    return next();
+  }
+
+  return res.status(403).json({
+    success: false,
+    data: null,
+    error: {
+      code: 'PASSWORD_CHANGE_REQUIRED',
+      message: 'You must change your temporary password before accessing this resource.',
+    },
+  });
+};
+
 module.exports = {
   verifyToken,
   checkRole,
-  checkSchoolAccess
+  checkSchoolAccess,
+  checkPasswordChanged,
 };
 
 

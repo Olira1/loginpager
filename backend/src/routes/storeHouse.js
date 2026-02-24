@@ -3,11 +3,12 @@
 
 const express = require('express');
 const router = express.Router();
-const { verifyToken, checkRole } = require('../middleware/auth');
+const { verifyToken, checkRole, checkPasswordChanged } = require('../middleware/auth');
 const storeHouseController = require('../controllers/storeHouseController');
 
 // Apply middleware to all routes
 router.use(verifyToken);
+router.use(checkPasswordChanged);
 router.use(checkRole('store_house'));
 
 // ==========================================

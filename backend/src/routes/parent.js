@@ -2,10 +2,11 @@
 const express = require('express');
 const router = express.Router();
 const parentController = require('../controllers/parentController');
-const { verifyToken, checkRole } = require('../middleware/auth');
+const { verifyToken, checkRole, checkPasswordChanged } = require('../middleware/auth');
 
 // All routes require authentication and parent role
 router.use(verifyToken);
+router.use(checkPasswordChanged);
 router.use(checkRole('parent'));
 
 // ==========================================
