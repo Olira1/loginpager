@@ -21,6 +21,7 @@ import {
   Eye,
   Archive,
   FileSpreadsheet,
+  Upload,
 } from 'lucide-react';
 
 /**
@@ -240,6 +241,40 @@ export const navigationConfig = {
       icon: FileText,
     },
   ],
+
+  // Registrar Navigation
+  registrar: [
+    {
+      name: 'Dashboard',
+      path: '/registrar',
+      icon: LayoutDashboard,
+    },
+    {
+      name: 'Students',
+      path: '/registrar/students',
+      icon: Users,
+    },
+    {
+      name: 'Teachers',
+      path: '/registrar/teachers',
+      icon: UserCheck,
+    },
+    {
+      name: 'Parents',
+      path: '/registrar/parents',
+      icon: UserCheck,
+    },
+    {
+      name: 'Upload Students',
+      path: '/registrar/upload/students',
+      icon: Upload,
+    },
+    {
+      name: 'Upload Teachers',
+      path: '/registrar/upload/teachers',
+      icon: Upload,
+    },
+  ],
 };
 
 /**
@@ -262,6 +297,7 @@ export const roleDisplayNames = {
   student: 'Student',
   parent: 'Parent',
   store_house: 'Store House',
+  registrar: 'Registrar',
 };
 
 export default navigationConfig;

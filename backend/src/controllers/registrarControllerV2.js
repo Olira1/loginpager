@@ -268,6 +268,7 @@ const createTeacher = async (req, res) => {
           status: 'active',
           created_at: new Date().toISOString()
         },
+        teacher_credentials: { username: staffCode, temporary_password: tempPassword, must_change_password: true },
         credentials: { username: staffCode, temporary_password: tempPassword, must_change_password: true }
       },
       error: null
@@ -383,14 +384,16 @@ const updateStudent = async (req, res) => {
   try {
     const schoolId = req.user.school_id;
     const { student_id } = req.params;
-    const { first_name, last_name, gender, date_of_birth, class_id } = req.body;
+    const { first_name, last_name, gender, date_of_birth, grade_id, class_id, academic_year_id, parent } = req.body;
 
     const [existingRows] = await pool.query(
-      `SELECT s.id, s.user_id, u.first_name, u.last_name
+      `SELECT s.id, s.user_id, s.class_id as current_class_id, s.academic_year_id as current_academic_year_id, u.first_name, u.last_name,
+              sp.parent_id as current_parent_id
        FROM students s
        JOIN users u ON s.user_id = u.id
        JOIN classes c ON s.class_id = c.id
        JOIN grades g ON c.grade_id = g.id
+       LEFT JOIN student_parents sp ON sp.student_id = s.id
        WHERE s.id = ? AND g.school_id = ?`,
       [student_id, schoolId]
     );
@@ -400,10 +403,31 @@ const updateStudent = async (req, res) => {
     if (gender !== undefined && !isGenderValid(gender)) {
       return res.status(400).json({ success: false, data: null, error: { code: 'VALIDATION_ERROR', message: 'Gender must be M or F.' } });
     }
+
+    let resolvedClass = null;
     if (class_id !== undefined) {
-      const targetClass = await getClassInSchool(class_id, schoolId);
-      if (!targetClass) {
+      resolvedClass = await getClassInSchool(class_id, schoolId);
+      if (!resolvedClass) {
         return res.status(404).json({ success: false, data: null, error: { code: 'NOT_FOUND', message: 'Class not found in this school.' } });
+      }
+    }
+    if (grade_id !== undefined) {
+      const resolvedGrade = await getGradeInSchool(grade_id, schoolId);
+      if (!resolvedGrade) {
+        return res.status(404).json({ success: false, data: null, error: { code: 'NOT_FOUND', message: 'Grade not found in this school.' } });
+      }
+      if (resolvedClass && Number(resolvedClass.grade_id) !== Number(grade_id)) {
+        return res.status(400).json({
+          success: false,
+          data: null,
+          error: { code: 'VALIDATION_ERROR', message: 'Selected class does not belong to selected grade.' }
+        });
+      }
+    }
+    if (academic_year_id !== undefined) {
+      const year = await getAcademicYear(academic_year_id);
+      if (!year) {
+        return res.status(404).json({ success: false, data: null, error: { code: 'NOT_FOUND', message: 'Academic year not found.' } });
       }
     }
 
@@ -430,10 +454,46 @@ const updateStudent = async (req, res) => {
     const studentParams = [];
     if (date_of_birth !== undefined) { studentUpdates.push('date_of_birth = ?'); studentParams.push(date_of_birth); }
     if (class_id !== undefined) { studentUpdates.push('class_id = ?'); studentParams.push(class_id); }
+    if (academic_year_id !== undefined) { studentUpdates.push('academic_year_id = ?'); studentParams.push(academic_year_id); }
     if (gender !== undefined) { studentUpdates.push('sex = ?'); studentParams.push(toSex(gender)); }
     if (studentUpdates.length > 0) {
       studentParams.push(student_id);
       await connection.query(`UPDATE students SET ${studentUpdates.join(', ')} WHERE id = ?`, studentParams);
+    }
+
+    if (parent && (parent.first_name || parent.last_name || parent.phone || parent.relationship)) {
+      if (!parent.first_name || !parent.last_name || !parent.phone || !parent.relationship) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          data: null,
+          error: { code: 'VALIDATION_ERROR', message: 'parent.first_name, parent.last_name, parent.phone, and parent.relationship are required when updating parent.' }
+        });
+      }
+
+      const parentResult = await createOrGetParent(connection, schoolId, parent);
+      if (existingRows[0].current_parent_id && Number(existingRows[0].current_parent_id) === Number(parentResult.id)) {
+        await connection.query(
+          `UPDATE users
+           SET first_name = ?, last_name = ?, name = ?, phone = ?, username = ?
+           WHERE id = ? AND role = 'parent'`,
+          [
+            String(parent.first_name).trim(),
+            String(parent.last_name).trim(),
+            `${String(parent.first_name).trim()} ${String(parent.last_name).trim()}`.trim(),
+            String(parent.phone).trim(),
+            String(parent.phone).trim(),
+            parentResult.id
+          ]
+        );
+      }
+
+      await connection.query(
+        `INSERT INTO student_parents (student_id, parent_id, relationship)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE relationship = VALUES(relationship), parent_id = VALUES(parent_id)`,
+        [student_id, parentResult.id, String(parent.relationship).toLowerCase()]
+      );
     }
 
     await connection.commit();
@@ -846,17 +906,357 @@ const updateParent = async (req, res) => {
   }
 };
 
+const normalizeCell = (value) => String(value ?? '').trim();
+
+const normalizeGenderFromCell = (value) => {
+  const raw = normalizeCell(value).toUpperCase();
+  if (raw === 'M' || raw === 'MALE') return 'M';
+  if (raw === 'F' || raw === 'FEMALE') return 'F';
+  return null;
+};
+
+const parseExcelDateValue = (value) => {
+  if (value === null || value === undefined || value === '') return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+  if (typeof value === 'number') {
+    const parsed = xlsx.SSF.parse_date_code(value);
+    if (parsed && parsed.y && parsed.m && parsed.d) {
+      const mm = String(parsed.m).padStart(2, '0');
+      const dd = String(parsed.d).padStart(2, '0');
+      return `${parsed.y}-${mm}-${dd}`;
+    }
+  }
+  const asString = normalizeCell(value);
+  if (!asString) return null;
+  const asDate = new Date(asString);
+  if (Number.isNaN(asDate.getTime())) return null;
+  return asDate.toISOString().slice(0, 10);
+};
+
+const normalizeRelationship = (value) => {
+  const relationship = normalizeCell(value).toLowerCase();
+  if (!relationship) return null;
+  return relationship;
+};
+
+const normalizeGradeFromCell = (value) => {
+  const raw = normalizeCell(value).toLowerCase();
+  if (!raw) return null;
+  const numeric = raw.replace(/[^0-9]/g, '');
+  if (!numeric) return null;
+  return Number(numeric);
+};
+
+const normalizeClassNameFromCell = (value) => {
+  const raw = normalizeCell(value).toUpperCase();
+  if (!raw) return null;
+  const compact = raw.replace(/\s+/g, '');
+  if (compact.startsWith('GRADE')) {
+    const match = compact.match(/^GRADE(\d+)([A-Z0-9-]+)$/);
+    if (match) return `${match[1]}${match[2]}`;
+  }
+  return compact;
+};
+
+const normalizeAcademicYearFromCell = (value) => {
+  const raw = normalizeCell(value).toLowerCase();
+  if (!raw) return null;
+
+  const slashMatch = raw.match(/(\d{4})\s*\/\s*(\d{4})/);
+  if (slashMatch) return `${slashMatch[1]}/${slashMatch[2]}`;
+
+  const yearMatch = raw.match(/\d{4}/);
+  if (yearMatch) return yearMatch[0];
+
+  return normalizeCell(value);
+};
+
+const getDateYear = (dateValue) => {
+  if (!dateValue) return null;
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return null;
+  return String(date.getUTCFullYear());
+};
+
+const isAcademicYearMatch = (normalizedInput, yearName, startDate, endDate) => {
+  if (!normalizedInput) return false;
+  const normalizedYearName = normalizeAcademicYearFromCell(yearName || '');
+  if (normalizedYearName && normalizedYearName === normalizedInput) return true;
+  if (normalizedYearName && normalizedYearName.includes(normalizedInput)) return true;
+
+  const startYear = getDateYear(startDate);
+  const endYear = getDateYear(endDate);
+  if (!startYear && !endYear) return false;
+
+  if (normalizedInput.includes('/')) {
+    const [left, right] = normalizedInput.split('/');
+    return (left && right && left === startYear && right === endYear);
+  }
+
+  // Single year input such as 2025 should match either start or end year.
+  return normalizedInput === startYear || normalizedInput === endYear;
+};
+
+const extractClassSuffix = (value) => {
+  const normalized = normalizeClassNameFromCell(value);
+  if (!normalized) return null;
+  const withoutGrade = normalized.replace(/^\d+/, '');
+  return withoutGrade || normalized;
+};
+
+const resolveClassAndAcademicYear = async (schoolId, gradeLevel, classNameInput, academicYearInput) => {
+  const normalizedClass = normalizeClassNameFromCell(classNameInput);
+  if (!gradeLevel || !normalizedClass || !academicYearInput) {
+    return null;
+  }
+
+  const [classes] = await pool.query(
+    `SELECT c.id, c.name, c.academic_year_id, g.level, ay.name as academic_year_name, ay.start_date, ay.end_date
+     FROM classes c
+     JOIN grades g ON c.grade_id = g.id
+     LEFT JOIN academic_years ay ON ay.id = c.academic_year_id
+     WHERE g.school_id = ? AND g.level = ?`,
+    [schoolId, gradeLevel]
+  );
+
+  const normalizedYear = normalizeAcademicYearFromCell(academicYearInput);
+  const classSuffix = extractClassSuffix(classNameInput);
+
+  const matched = classes.find((row) => {
+    const className = normalizeClassNameFromCell(row.name) || '';
+    const sameClass = className === normalizedClass || className.endsWith(classSuffix || '__no_suffix__');
+    if (!sameClass) return false;
+
+    return isAcademicYearMatch(normalizedYear, row.academic_year_name, row.start_date, row.end_date);
+  });
+
+  return matched || null;
+};
+
+const getBulkRowErrorMessage = (error, fallbackMessage) => {
+  if (!error) return fallbackMessage;
+  if (error.code === 'ER_DUP_ENTRY') return 'Duplicate value violates unique constraint.';
+  if (error.code === 'ER_NO_REFERENCED_ROW_2') return 'Referenced record not found.';
+  if (error.code === 'ER_BAD_NULL_ERROR') return 'Required field is missing.';
+  return error.message || fallbackMessage;
+};
+
+const validateStudentUploadRow = (row) => {
+  const first_name = normalizeCell(row.first_name);
+  const last_name = normalizeCell(row.last_name);
+  const gender = normalizeGenderFromCell(row.gender);
+  const date_of_birth = parseExcelDateValue(row.date_of_birth);
+  const grade = normalizeGradeFromCell(row.grade);
+  const class_name = normalizeClassNameFromCell(row.class);
+  const academic_year = normalizeAcademicYearFromCell(row.academic_year);
+  const parent_first_name = normalizeCell(row.parent_first_name);
+  const parent_last_name = normalizeCell(row.parent_last_name);
+  const parent_phone = normalizeCell(row.parent_phone);
+  const parent_relationship = normalizeRelationship(row.parent_relationship);
+
+  const missing = [];
+  if (!first_name) missing.push('first_name');
+  if (!last_name) missing.push('last_name');
+  if (!gender) missing.push('gender');
+  if (!date_of_birth) missing.push('date_of_birth');
+  if (!grade) missing.push('grade');
+  if (!class_name) missing.push('class');
+  if (!academic_year) missing.push('academic_year');
+  if (!parent_first_name) missing.push('parent_first_name');
+  if (!parent_last_name) missing.push('parent_last_name');
+  if (!parent_phone) missing.push('parent_phone');
+  if (!parent_relationship) missing.push('parent_relationship');
+
+  return {
+    is_valid: missing.length === 0,
+    missing,
+    normalized: {
+      first_name,
+      last_name,
+      gender,
+      date_of_birth,
+      grade,
+      class_name,
+      academic_year,
+      parent: {
+        first_name: parent_first_name,
+        last_name: parent_last_name,
+        phone: parent_phone,
+        relationship: parent_relationship
+      }
+    }
+  };
+};
+
+const validateTeacherUploadRow = (row) => {
+  const first_name = normalizeCell(row.first_name);
+  const last_name = normalizeCell(row.last_name);
+  const gender = normalizeGenderFromCell(row.gender);
+  const date_of_birth = parseExcelDateValue(row.date_of_birth);
+  const email = normalizeCell(row.email) || null;
+  const phone = normalizeCell(row.phone);
+  const qualification = normalizeCell(row.qualification) || null;
+  const specialization = normalizeCell(row.specialization) || null;
+
+  const missing = [];
+  if (!first_name) missing.push('first_name');
+  if (!last_name) missing.push('last_name');
+  if (!gender) missing.push('gender');
+  if (!phone) missing.push('phone');
+
+  return {
+    is_valid: missing.length === 0,
+    missing,
+    normalized: {
+      first_name,
+      last_name,
+      gender,
+      date_of_birth,
+      email,
+      phone,
+      qualification,
+      specialization
+    }
+  };
+};
+
 const uploadStudents = async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ success: false, data: null, error: { code: 'VALIDATION_ERROR', message: 'file is required.' } });
+    const schoolId = req.user.school_id;
+    if (!req.file) {
+      return res.status(400).json({ success: false, data: null, error: { code: 'VALIDATION_ERROR', message: 'file is required.' } });
+    }
     if (!String(req.file.originalname || '').toLowerCase().endsWith('.xlsx')) {
       return res.status(400).json({ success: false, data: null, error: { code: 'INVALID_FILE_FORMAT', message: 'Only .xlsx files are supported.' } });
     }
+
     const wb = xlsx.read(req.file.buffer, { type: 'buffer' });
     const rows = xlsx.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+    if (rows.length === 0) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'Uploaded file has no data rows.' }
+      });
+    }
+
+    const createdStudents = [];
+    const failedRows = [];
+
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index];
+      const rowNumber = index + 2;
+      const validation = validateStudentUploadRow(row);
+
+      if (!validation.is_valid) {
+        failedRows.push({
+          row_number: rowNumber,
+          row_data: row,
+          error: `Missing/invalid fields: ${validation.missing.join(', ')}`
+        });
+        continue;
+      }
+
+      let connection;
+      try {
+        const normalized = validation.normalized;
+        const resolved = await resolveClassAndAcademicYear(
+          schoolId,
+          normalized.grade,
+          normalized.class_name,
+          normalized.academic_year
+        );
+        if (!resolved) {
+          failedRows.push({
+            row_number: rowNumber,
+            row_data: row,
+            error: `Class/grade/year mapping not found for grade="${normalized.grade}", class="${normalized.class_name}", academic_year="${normalized.academic_year}".`
+          });
+          continue;
+        }
+
+        connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        const studentCode = await generateStudentCode(schoolId, new Date().getFullYear());
+        const tempPassword = generatePassword();
+        const hashed = await hashPassword(tempPassword);
+        const fullName = `${normalized.first_name} ${normalized.last_name}`.trim();
+
+        const [userInserted] = await connection.query(
+          `INSERT INTO users
+            (name, first_name, last_name, username, email, password, phone, gender, role, school_id, is_active, must_change_password)
+           VALUES (?, ?, ?, ?, NULL, ?, NULL, ?, 'student', ?, true, true)`,
+          [fullName, normalized.first_name, normalized.last_name, studentCode, hashed, normalized.gender, schoolId]
+        );
+
+        const [studentInserted] = await connection.query(
+          `INSERT INTO students (user_id, class_id, student_id_number, date_of_birth, sex, date_of_admission, academic_year_id)
+           VALUES (?, ?, ?, ?, ?, CURDATE(), ?)`,
+          [userInserted.insertId, resolved.id, studentCode, normalized.date_of_birth, toSex(normalized.gender), resolved.academic_year_id]
+        );
+
+        const parentResult = await createOrGetParent(connection, schoolId, normalized.parent);
+        await connection.query(
+          `INSERT INTO student_parents (student_id, parent_id, relationship)
+           VALUES (?, ?, ?)
+           ON DUPLICATE KEY UPDATE relationship = VALUES(relationship)`,
+          [studentInserted.insertId, parentResult.id, normalized.parent.relationship]
+        );
+
+        await connection.commit();
+
+        createdStudents.push({
+          row_number: rowNumber,
+          student: {
+            id: studentInserted.insertId,
+            student_code: studentCode,
+            full_name: fullName,
+            grade: normalized.grade,
+            class: resolved.name,
+            academic_year: resolved.academic_year_name || normalized.academic_year
+          },
+          student_credentials: {
+            username: studentCode,
+            temporary_password: tempPassword,
+            must_change_password: true
+          },
+          parent: {
+            id: parentResult.id,
+            full_name: parentResult.full_name,
+            phone: parentResult.phone,
+            relationship: normalized.parent.relationship,
+            is_new_account: parentResult.is_new_account
+          },
+          parent_credentials: parentResult.credentials
+        });
+      } catch (error) {
+        if (connection) await connection.rollback();
+        failedRows.push({
+          row_number: rowNumber,
+          row_data: row,
+          error: getBulkRowErrorMessage(error, 'Failed to create student from this row.')
+        });
+      } finally {
+        if (connection) connection.release();
+      }
+    }
+
     return res.status(200).json({
       success: true,
-      data: { upload_id: `upload-stu-${Date.now()}`, total_rows: rows.length, successful: 0, failed: 0, results: { created_students: [], failed_rows: [] }, uploaded_at: new Date().toISOString() },
+      data: {
+        upload_id: `upload-stu-${Date.now()}`,
+        total_rows: rows.length,
+        successful: createdStudents.length,
+        failed: failedRows.length,
+        results: {
+          created_students: createdStudents,
+          failed_rows: failedRows
+        },
+        uploaded_at: new Date().toISOString()
+      },
       error: null
     });
   } catch (error) {
@@ -870,22 +1270,153 @@ const getStudentUploadTemplate = async (req, res) => res.status(200).json({
   data: {
     download_url: '/api/v1/downloads/templates/student_upload_template.xlsx',
     filename: 'student_upload_template.xlsx',
-    columns: ['first_name', 'last_name', 'gender', 'date_of_birth', 'parent_first_name', 'parent_last_name', 'parent_phone', 'parent_relationship']
+    columns: ['first_name', 'last_name', 'gender', 'date_of_birth', 'grade', 'class', 'academic_year', 'parent_first_name', 'parent_last_name', 'parent_phone', 'parent_relationship']
   },
   error: null
 });
 
 const uploadTeachers = async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ success: false, data: null, error: { code: 'VALIDATION_ERROR', message: 'file is required.' } });
+    const schoolId = req.user.school_id;
+    if (!req.file) {
+      return res.status(400).json({ success: false, data: null, error: { code: 'VALIDATION_ERROR', message: 'file is required.' } });
+    }
     if (!String(req.file.originalname || '').toLowerCase().endsWith('.xlsx')) {
       return res.status(400).json({ success: false, data: null, error: { code: 'INVALID_FILE_FORMAT', message: 'Only .xlsx files are supported.' } });
     }
+
+    const school = await getSchool(schoolId);
+    if (!school) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: { code: 'NOT_FOUND', message: 'School not found.' }
+      });
+    }
+
     const wb = xlsx.read(req.file.buffer, { type: 'buffer' });
     const rows = xlsx.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+    if (rows.length === 0) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'Uploaded file has no data rows.' }
+      });
+    }
+
+    const createdTeachers = [];
+    const failedRows = [];
+
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index];
+      const rowNumber = index + 2;
+      const validation = validateTeacherUploadRow(row);
+
+      if (!validation.is_valid) {
+        failedRows.push({
+          row_number: rowNumber,
+          row_data: row,
+          error: `Missing/invalid fields: ${validation.missing.join(', ')}`
+        });
+        continue;
+      }
+
+      let connection;
+      try {
+        const normalized = validation.normalized;
+        connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        if (normalized.email) {
+          const [exists] = await connection.query('SELECT id FROM users WHERE email = ? LIMIT 1', [normalized.email]);
+          if (exists.length > 0) {
+            throw new Error('Email already exists.');
+          }
+        }
+
+        const staffCode = await generateStaffCode(schoolId, new Date().getFullYear());
+        const tempPassword = generatePassword();
+        const hashed = await hashPassword(tempPassword);
+        const fullName = `${normalized.first_name} ${normalized.last_name}`.trim();
+
+        const [userInserted] = await connection.query(
+          `INSERT INTO users
+            (name, first_name, last_name, username, email, password, phone, gender, role, school_id, is_active, must_change_password)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'teacher', ?, true, true)`,
+          [
+            fullName,
+            normalized.first_name,
+            normalized.last_name,
+            staffCode,
+            normalized.email,
+            hashed,
+            normalized.phone,
+            normalized.gender,
+            schoolId
+          ]
+        );
+
+        const [teacherInserted] = await connection.query(
+          `INSERT INTO teachers (user_id, staff_code, date_of_birth, qualification, specialization, school_id)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            userInserted.insertId,
+            staffCode,
+            normalized.date_of_birth,
+            normalized.qualification,
+            normalized.specialization,
+            schoolId
+          ]
+        );
+
+        await connection.commit();
+
+        createdTeachers.push({
+          row_number: rowNumber,
+          teacher: {
+            id: teacherInserted.insertId,
+            staff_code: staffCode,
+            full_name: fullName,
+            email: normalized.email,
+            phone: normalized.phone,
+            school: { id: school.id, name: school.name }
+          },
+          teacher_credentials: {
+            username: staffCode,
+            temporary_password: tempPassword,
+            must_change_password: true
+          },
+          credentials: {
+            username: staffCode,
+            temporary_password: tempPassword,
+            must_change_password: true
+          }
+        });
+      } catch (error) {
+        if (connection) await connection.rollback();
+        failedRows.push({
+          row_number: rowNumber,
+          row_data: row,
+          error: getBulkRowErrorMessage(error, 'Failed to create teacher from this row.')
+        });
+      } finally {
+        if (connection) connection.release();
+      }
+    }
+
     return res.status(200).json({
       success: true,
-      data: { upload_id: `upload-tch-${Date.now()}`, total_rows: rows.length, successful: 0, failed: 0, results: { created_teachers: [], failed_rows: [] }, uploaded_at: new Date().toISOString() },
+      data: {
+        upload_id: `upload-tch-${Date.now()}`,
+        total_rows: rows.length,
+        successful: createdTeachers.length,
+        failed: failedRows.length,
+        results: {
+          created_teachers: createdTeachers,
+          failed_rows: failedRows
+        },
+        uploaded_at: new Date().toISOString()
+      },
       error: null
     });
   } catch (error) {
@@ -992,6 +1523,64 @@ const listParents = async (req, res) => {
   }
 };
 
+const getRegistrationMetadata = async (req, res) => {
+  try {
+    const schoolId = req.user.school_id;
+    const [grades] = await pool.query(
+      `SELECT id, level, name
+       FROM grades
+       WHERE school_id = ?
+       ORDER BY level ASC, name ASC`,
+      [schoolId]
+    );
+    const [classes] = await pool.query(
+      `SELECT c.id, c.name, c.grade_id, c.academic_year_id
+       FROM classes c
+       JOIN grades g ON g.id = c.grade_id
+       WHERE g.school_id = ?
+       ORDER BY c.name ASC`,
+      [schoolId]
+    );
+    const [academicYears] = await pool.query(
+      `SELECT id, name, start_date, end_date, is_current
+       FROM academic_years
+       ORDER BY start_date DESC, id DESC`
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        grades: grades.map((g) => ({
+          id: g.id,
+          level: g.level,
+          name: g.name
+        })),
+        classes: classes.map((c) => ({
+          id: c.id,
+          name: c.name,
+          grade_id: c.grade_id,
+          academic_year_id: c.academic_year_id
+        })),
+        academic_years: academicYears.map((ay) => ({
+          id: ay.id,
+          name: ay.name,
+          start_date: ay.start_date,
+          end_date: ay.end_date,
+          is_current: !!ay.is_current
+        }))
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error('Registrar metadata error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'An error occurred while fetching registration metadata.' }
+    });
+  }
+};
+
 const getStatistics = async (req, res) => {
   try {
     const schoolId = req.user.school_id;
@@ -1074,6 +1663,7 @@ module.exports = {
   listParents,
   getParent,
   updateParent,
+  getRegistrationMetadata,
   getStatistics
 };
 

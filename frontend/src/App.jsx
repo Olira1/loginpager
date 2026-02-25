@@ -66,6 +66,16 @@ import {
   TranscriptsPage as StoreHouseTranscriptsPage
 } from './pages/storeHouse';
 
+// Registrar Pages
+import {
+  RegistrarDashboard,
+  RegistrarStudentsPage,
+  RegistrarTeachersPage,
+  RegistrarParentsPage,
+  StudentUploadPage,
+  TeacherUploadPage
+} from './pages/registrar';
+
 // Parent Pages
 import {
   ParentDashboard,
@@ -208,6 +218,23 @@ function App() {
             <Route path="rosters" element={<StoreHouseRostersPage />} />
             <Route path="students" element={<StoreHouseStudentRecordsPage />} />
             <Route path="transcripts" element={<StoreHouseTranscriptsPage />} />
+          </Route>
+
+          {/* Registrar Routes */}
+          <Route
+            path="/registrar"
+            element={
+              <ProtectedRoute allowedRoles="registrar">
+                <DashboardLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<RegistrarDashboard />} />
+            <Route path="students" element={<RegistrarStudentsPage />} />
+            <Route path="teachers" element={<RegistrarTeachersPage />} />
+            <Route path="parents" element={<RegistrarParentsPage />} />
+            <Route path="upload/students" element={<StudentUploadPage />} />
+            <Route path="upload/teachers" element={<TeacherUploadPage />} />
           </Route>
 
           {/* Legacy dashboard route - redirect based on role */}

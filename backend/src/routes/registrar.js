@@ -58,6 +58,7 @@ router.put('/parents/:parent_id', registrarController.updateParent);
 // ==========================================
 // STATISTICS
 // ==========================================
+router.get('/metadata', registrarController.getRegistrationMetadata);
 router.get('/statistics', registrarController.getStatistics);
 
 module.exports = router;
