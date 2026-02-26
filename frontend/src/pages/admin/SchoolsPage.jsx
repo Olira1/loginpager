@@ -59,16 +59,6 @@ const SchoolCard = ({ school, onView, onEdit, onToggleStatus, onDelete }) => {
       {/* Details */}
       <div className="space-y-2 mb-4">
         <p className="text-sm text-gray-600">{school.address || 'No address'}</p>
-        {school.school_head && (
-          <p className="text-sm text-gray-500">
-            <span className="text-gray-400">Head:</span> {school.school_head.name}
-          </p>
-        )}
-        {school.email && (
-          <p className="text-sm text-gray-500 truncate">
-            <span className="text-gray-400">Email:</span> {school.email}
-          </p>
-        )}
       </div>
 
       {/* Actions */}
@@ -107,11 +97,7 @@ const SchoolCard = ({ school, onView, onEdit, onToggleStatus, onDelete }) => {
 const SchoolModal = ({ isOpen, mode, school, onClose, onSave }) => {
   const [formData, setFormData] = useState({
     name: '',
-    code: '',
-    address: '',
-    phone: '',
-    email: '',
-    school_head_id: ''
+    address: ''
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -120,20 +106,12 @@ const SchoolModal = ({ isOpen, mode, school, onClose, onSave }) => {
     if (school && (mode === 'edit' || mode === 'view')) {
       setFormData({
         name: school.name || '',
-        code: school.code || '',
-        address: school.address || '',
-        phone: school.phone || '',
-        email: school.email || '',
-        school_head_id: school.school_head?.id || ''
+        address: school.address || ''
       });
     } else {
       setFormData({
         name: '',
-        code: '',
-        address: '',
-        phone: '',
-        email: '',
-        school_head_id: ''
+        address: ''
       });
     }
     setError(null);
@@ -204,75 +182,17 @@ const SchoolModal = ({ isOpen, mode, school, onClose, onSave }) => {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              School Code *
-            </label>
-            <input
-              type="text"
-              value={formData.code}
-              onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
-              disabled={isViewMode || mode === 'edit'}
-              required
-              maxLength={10}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-50 disabled:text-gray-500"
-              placeholder="e.g., AASS"
-            />
-          </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                school head id *
-              </label>
-              <input
-                type="text"
-                value={formData.school_head_id}
-                onChange={(e) => setFormData({ ...formData, school_head_id: e.target.value })}
-                disabled={isViewMode}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-50 disabled:text-gray-500"
-                placeholder="Enter school head id"
-              />
-            </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Address
+              Address *
             </label>
             <input
               type="text"
               value={formData.address}
               onChange={(e) => setFormData({ ...formData, address: e.target.value })}
               disabled={isViewMode}
+              required
               className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-50 disabled:text-gray-500"
               placeholder="Enter address"
             />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Phone
-              </label>
-              <input
-                type="tel"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                disabled={isViewMode}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-50 disabled:text-gray-500"
-                placeholder="+251..."
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Email
-              </label>
-              <input
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                disabled={isViewMode}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-50 disabled:text-gray-500"
-                placeholder="school@example.com"
-              />
-            </div>
           </div>
 
           {/* School statistics in view mode */}

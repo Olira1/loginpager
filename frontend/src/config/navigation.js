@@ -42,6 +42,11 @@ export const navigationConfig = {
       icon: Building2,
     },
     {
+      name: 'School Heads',
+      path: '/admin/school-heads',
+      icon: UserCheck,
+    },
+    {
       name: 'Promotion Criteria',
       path: '/admin/promotion-criteria',
       icon: Award,
@@ -84,6 +89,16 @@ export const navigationConfig = {
       name: 'Assignments',
       path: '/school/assignments',
       icon: UserCheck,
+    },
+    {
+      name: 'Registrars',
+      path: '/school/registrars',
+      icon: Users,
+    },
+    {
+      name: 'Store House Users',
+      path: '/school/store-house-users',
+      icon: Archive,
     },
   ],
 

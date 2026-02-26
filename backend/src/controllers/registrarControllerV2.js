@@ -176,7 +176,7 @@ const listStudents = async (req, res) => {
       params
     );
     const [rows] = await pool.query(
-      `SELECT s.id, s.student_id_number, s.date_of_birth, u.name as full_name, u.gender, u.is_active, u.created_at,
+      `SELECT s.id, s.student_id_number, s.date_of_birth, u.id as user_id, u.name as full_name, u.gender, u.is_active, u.created_at,
               g.id as grade_id, g.name as grade_name, c.id as class_id, c.name as class_name
        FROM students s
        JOIN users u ON s.user_id = u.id
@@ -192,6 +192,7 @@ const listStudents = async (req, res) => {
       data: {
         items: rows.map((r) => ({
           id: r.id,
+          user_id: r.user_id,
           student_code: r.student_id_number,
           full_name: r.full_name,
           gender: r.gender,
@@ -297,7 +298,7 @@ const listTeachers = async (req, res) => {
 
     const [countRows] = await pool.query(`SELECT COUNT(*) as total FROM teachers t JOIN users u ON t.user_id = u.id WHERE ${whereClause}`, params);
     const [rows] = await pool.query(
-      `SELECT t.id, t.staff_code, t.qualification, t.specialization, u.name as full_name, u.gender, u.email, u.phone, u.is_active, u.created_at
+      `SELECT t.id, t.staff_code, t.qualification, t.specialization, u.id as user_id, u.name as full_name, u.gender, u.email, u.phone, u.is_active, u.created_at
        FROM teachers t
        JOIN users u ON t.user_id = u.id
        WHERE ${whereClause}
@@ -310,6 +311,7 @@ const listTeachers = async (req, res) => {
       data: {
         items: rows.map((r) => ({
           id: r.id,
+          user_id: r.user_id,
           staff_code: r.staff_code,
           full_name: r.full_name,
           gender: r.gender,

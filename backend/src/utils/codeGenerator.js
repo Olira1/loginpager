@@ -2,21 +2,23 @@ const { pool } = require('../config/db');
 
 /**
  * Generate a student code in format STU{YEAR}{SEQUENCE}.
- * Auto-increments per school per year.
+ * Auto-increments globally per year.
  * Example: STU202500001
  * @param {number} schoolId
  * @param {number} [year] - Defaults to current year
  * @returns {Promise<string>}
  */
 const generateStudentCode = async (schoolId, year) => {
+  // Kept for backward compatibility with existing callers.
+  void schoolId;
   const y = year || new Date().getFullYear();
   const prefix = `STU${y}`;
 
   const [rows] = await pool.query(
     `SELECT u.username FROM users u
-     WHERE u.school_id = ? AND u.role = 'student' AND u.username LIKE ?
+     WHERE u.username LIKE ?
      ORDER BY u.username DESC LIMIT 1`,
-    [schoolId, `${prefix}%`]
+    [`${prefix}%`]
   );
 
   let sequence = 1;
@@ -33,21 +35,23 @@ const generateStudentCode = async (schoolId, year) => {
 
 /**
  * Generate a staff / teacher code in format TCH{YEAR}{SEQUENCE}.
- * Auto-increments per school per year.
+ * Auto-increments globally per year.
  * Example: TCH202500001
  * @param {number} schoolId
  * @param {number} [year] - Defaults to current year
  * @returns {Promise<string>}
  */
 const generateStaffCode = async (schoolId, year) => {
+  // Kept for backward compatibility with existing callers.
+  void schoolId;
   const y = year || new Date().getFullYear();
   const prefix = `TCH${y}`;
 
   const [rows] = await pool.query(
     `SELECT t.staff_code FROM teachers t
-     WHERE t.school_id = ? AND t.staff_code LIKE ?
+     WHERE t.staff_code LIKE ?
      ORDER BY t.staff_code DESC LIMIT 1`,
-    [schoolId, `${prefix}%`]
+    [`${prefix}%`]
   );
 
   let sequence = 1;

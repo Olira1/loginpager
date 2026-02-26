@@ -196,70 +196,26 @@ const getSchool = async (req, res) => {
  */
 const createSchool = async (req, res) => {
   try {
-    const { name, code, address, phone, email, school_head_id } = req.body;
+    const { name, address } = req.body;
 
     // Validate required fields
-    if (!name || !code) {
+    if (!name || !address) {
       return res.status(400).json({
         success: false,
         data: null,
         error: {
           code: 'VALIDATION_ERROR',
-          message: 'Name and code are required.'
+          message: 'Name and address are required.'
         }
       });
-    }
-
-    // Check if code already exists
-    const [existing] = await pool.query(
-      'SELECT id FROM schools WHERE code = ?',
-      [code]
-    );
-
-    if (existing.length > 0) {
-      return res.status(409).json({
-        success: false,
-        data: null,
-        error: {
-          code: 'CONFLICT',
-          message: 'School code already exists.'
-        }
-      });
-    }
-
-    // Validate school_head_id if provided
-    if (school_head_id) {
-      const [headUser] = await pool.query(
-        'SELECT id, name, phone FROM users WHERE id = ? AND role = ?',
-        [school_head_id, 'school_head']
-      );
-
-      if (headUser.length === 0) {
-        return res.status(400).json({
-          success: false,
-          data: null,
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Invalid school head ID or user is not a school head.'
-          }
-        });
-      }
     }
 
     // Create school
     const [result] = await pool.query(
-      `INSERT INTO schools (name, code, address, phone, email, school_head_id, status)
-       VALUES (?, ?, ?, ?, ?, ?, 'active')`,
-      [name, code, address || null, phone || null, email || null, school_head_id || null]
+      `INSERT INTO schools (name, address, status)
+       VALUES (?, ?, 'active')`,
+      [name, address]
     );
-
-    // Update school_head's school_id
-    if (school_head_id) {
-      await pool.query(
-        'UPDATE users SET school_id = ? WHERE id = ?',
-        [result.insertId, school_head_id]
-      );
-    }
 
     // Get created school with school head info
     const [newSchool] = await pool.query(
@@ -277,15 +233,7 @@ const createSchool = async (req, res) => {
       data: {
         id: school.id,
         name: school.name,
-        code: school.code,
         address: school.address,
-        phone: school.phone,
-        email: school.email,
-        school_head: school.school_head_id ? {
-          id: school.school_head_id,
-          name: school.school_head_name,
-          phone: school.school_head_phone
-        } : null,
         status: school.status,
         created_at: school.created_at
       },
@@ -311,7 +259,7 @@ const createSchool = async (req, res) => {
 const updateSchool = async (req, res) => {
   try {
     const { school_id } = req.params;
-    const { name, address, phone, email, school_head_id } = req.body;
+    const { name, address } = req.body;
 
     // Check if school exists
     const [existing] = await pool.query(
@@ -342,19 +290,6 @@ const updateSchool = async (req, res) => {
       updates.push('address = ?');
       params.push(address);
     }
-    if (phone !== undefined) {
-      updates.push('phone = ?');
-      params.push(phone);
-    }
-    if (email !== undefined) {
-      updates.push('email = ?');
-      params.push(email);
-    }
-    if (school_head_id !== undefined) {
-      updates.push('school_head_id = ?');
-      params.push(school_head_id);
-    }
-
     if (updates.length === 0) {
       return res.status(400).json({
         success: false,
@@ -389,15 +324,7 @@ const updateSchool = async (req, res) => {
       data: {
         id: school.id,
         name: school.name,
-        code: school.code,
         address: school.address,
-        phone: school.phone,
-        email: school.email,
-        school_head: school.school_head_id ? {
-          id: school.school_head_id,
-          name: school.school_head_name,
-          phone: school.school_head_phone
-        } : null,
         status: school.status,
         updated_at: school.updated_at
       },

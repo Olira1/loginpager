@@ -13,6 +13,7 @@ import Dashboard from './pages/Dashboard';
 import { 
   AdminDashboard, 
   SchoolsPage, 
+  SchoolHeadsPage,
   PromotionCriteriaPage, 
   StatisticsPage 
 } from './pages/admin';
@@ -24,7 +25,9 @@ import {
   SubjectsPage,
   AssessmentTypesPage,
   TeachersPage,
-  TeacherAssignmentsPage
+  TeacherAssignmentsPage,
+  RegistrarsPage,
+  StoreHouseUsersPage
 } from './pages/schoolHead';
 
 // Teacher Pages
@@ -112,6 +115,7 @@ function App() {
             <Route index element={<AdminDashboard />} />
             <Route path="schools" element={<SchoolsPage />} />
             <Route path="schools/:id" element={<SchoolsPage />} />
+            <Route path="school-heads" element={<SchoolHeadsPage />} />
             <Route path="promotion-criteria" element={<PromotionCriteriaPage />} />
             <Route path="statistics" element={<StatisticsPage />} />
             <Route path="profile" element={<Dashboard />} />
@@ -133,6 +137,8 @@ function App() {
             <Route path="assessment-types" element={<AssessmentTypesPage />} />
             <Route path="teachers" element={<TeachersPage />} />
             <Route path="assignments" element={<TeacherAssignmentsPage />} />
+            <Route path="registrars" element={<RegistrarsPage />} />
+            <Route path="store-house-users" element={<StoreHouseUsersPage />} />
             <Route path="profile" element={<Dashboard />} />
           </Route>
 

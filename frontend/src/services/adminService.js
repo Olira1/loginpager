@@ -69,6 +69,63 @@ export const deactivateSchool = async (schoolId) => {
   return response.data;
 };
 
+// ============ SCHOOL HEADS ============
+
+/**
+ * Get list of school heads with pagination and filters
+ * @param {Object} params - Query parameters (page, limit, status, school_id, search)
+ */
+export const getSchoolHeads = async (params = {}) => {
+  const response = await api.get('/admin/school-heads', { params });
+  return response.data;
+};
+
+/**
+ * Get single school head details
+ * @param {number} userId - School head user ID
+ */
+export const getSchoolHead = async (userId) => {
+  const response = await api.get(`/admin/school-heads/${userId}`);
+  return response.data;
+};
+
+/**
+ * Create new school head
+ * @param {Object} data - School head data
+ */
+export const createSchoolHead = async (data) => {
+  const response = await api.post('/admin/school-heads', data);
+  return response.data;
+};
+
+/**
+ * Update school head
+ * @param {number} userId - School head user ID
+ * @param {Object} data - Updated school head data
+ */
+export const updateSchoolHead = async (userId, data) => {
+  const response = await api.put(`/admin/school-heads/${userId}`, data);
+  return response.data;
+};
+
+/**
+ * Activate school head
+ * @param {number} userId - School head user ID
+ */
+export const activateSchoolHead = async (userId) => {
+  const response = await api.patch(`/admin/school-heads/${userId}/activate`);
+  return response.data;
+};
+
+/**
+ * Deactivate school head
+ * @param {number} userId - School head user ID
+ */
+export const deactivateSchoolHead = async (userId) => {
+  const response = await api.patch(`/admin/school-heads/${userId}/deactivate`);
+  return response.data;
+};
+
 // ============ PROMOTION CRITERIA ============
 
 /**
@@ -145,6 +202,13 @@ export default {
   deleteSchool,
   activateSchool,
   deactivateSchool,
+  // School Heads
+  getSchoolHeads,
+  getSchoolHead,
+  createSchoolHead,
+  updateSchoolHead,
+  activateSchoolHead,
+  deactivateSchoolHead,
   // Promotion Criteria
   getPromotionCriteria,
   getPromotionCriteriaById,

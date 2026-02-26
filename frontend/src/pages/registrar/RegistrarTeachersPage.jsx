@@ -164,7 +164,8 @@ const RegistrarTeachersPage = () => {
   const onResetPassword = async (teacher) => {
     try {
       setSaving(true);
-      const response = await resetUserPassword(teacher.id);
+      const targetUserId = teacher.user_id || teacher.id;
+      const response = await resetUserPassword(targetUserId);
       if (!response.success) {
         setError(response.error?.message || 'Failed to reset password.');
         return;

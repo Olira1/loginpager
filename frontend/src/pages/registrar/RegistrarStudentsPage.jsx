@@ -231,7 +231,8 @@ const RegistrarStudentsPage = () => {
   const onResetPassword = async (student) => {
     try {
       setSaving(true);
-      const response = await resetUserPassword(student.id);
+      const targetUserId = student.user_id || student.id;
+      const response = await resetUserPassword(targetUserId);
       if (!response.success) {
         setError(response.error?.message || 'Failed to reset password.');
         return;

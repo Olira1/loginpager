@@ -7,4 +7,6 @@ export { default as SubjectsPage } from './SubjectsPage';
 export { default as AssessmentTypesPage } from './AssessmentTypesPage';
 export { default as TeachersPage } from './TeachersPage';
 export { default as TeacherAssignmentsPage } from './TeacherAssignmentsPage';
+export { default as RegistrarsPage } from './RegistrarsPage';
+export { default as StoreHouseUsersPage } from './StoreHouseUsersPage';
 

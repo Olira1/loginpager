@@ -274,6 +274,102 @@ export const getTeachers = async (params = {}) => {
   return response.data;
 };
 
+// ============ REGISTRARS ============
+
+/**
+ * Get list of registrars in the school
+ * @param {Object} params - Query parameters (page, limit, status, search)
+ */
+export const getRegistrars = async (params = {}) => {
+  const response = await api.get('/school/registrars', { params });
+  return response.data;
+};
+
+/**
+ * Create registrar account
+ * @param {Object} data - Registrar data
+ */
+export const createRegistrar = async (data) => {
+  const response = await api.post('/school/registrars', data);
+  return response.data;
+};
+
+/**
+ * Update registrar account
+ * @param {number} userId - Registrar user ID
+ * @param {Object} data - Updated registrar fields
+ */
+export const updateRegistrar = async (userId, data) => {
+  const response = await api.put(`/school/registrars/${userId}`, data);
+  return response.data;
+};
+
+/**
+ * Activate registrar account
+ * @param {number} userId - Registrar user ID
+ */
+export const activateRegistrar = async (userId) => {
+  const response = await api.patch(`/school/registrars/${userId}/activate`);
+  return response.data;
+};
+
+/**
+ * Deactivate registrar account
+ * @param {number} userId - Registrar user ID
+ */
+export const deactivateRegistrar = async (userId) => {
+  const response = await api.patch(`/school/registrars/${userId}/deactivate`);
+  return response.data;
+};
+
+// ============ STORE HOUSE USERS ============
+
+/**
+ * Get list of store house users in the school
+ * @param {Object} params - Query parameters (page, limit, status, search)
+ */
+export const getStoreHouseUsers = async (params = {}) => {
+  const response = await api.get('/school/store-house-users', { params });
+  return response.data;
+};
+
+/**
+ * Create store house user account
+ * @param {Object} data - Store house user data
+ */
+export const createStoreHouseUser = async (data) => {
+  const response = await api.post('/school/store-house-users', data);
+  return response.data;
+};
+
+/**
+ * Update store house user account
+ * @param {number} userId - Store house user ID
+ * @param {Object} data - Updated store house user fields
+ */
+export const updateStoreHouseUser = async (userId, data) => {
+  const response = await api.put(`/school/store-house-users/${userId}`, data);
+  return response.data;
+};
+
+/**
+ * Activate store house user account
+ * @param {number} userId - Store house user ID
+ */
+export const activateStoreHouseUser = async (userId) => {
+  const response = await api.patch(`/school/store-house-users/${userId}/activate`);
+  return response.data;
+};
+
+/**
+ * Deactivate store house user account
+ * @param {number} userId - Store house user ID
+ */
+export const deactivateStoreHouseUser = async (userId) => {
+  const response = await api.patch(`/school/store-house-users/${userId}/deactivate`);
+  return response.data;
+};
+
 // ============ TEACHING ASSIGNMENTS ============
 
 /**
@@ -359,6 +455,18 @@ export default {
   deleteWeightTemplate,
   // Teachers
   getTeachers,
+  // Registrars
+  getRegistrars,
+  createRegistrar,
+  updateRegistrar,
+  activateRegistrar,
+  deactivateRegistrar,
+  // Store House Users
+  getStoreHouseUsers,
+  createStoreHouseUser,
+  updateStoreHouseUser,
+  activateStoreHouseUser,
+  deactivateStoreHouseUser,
   // Teaching Assignments
   getTeachingAssignments,
   createTeachingAssignment,

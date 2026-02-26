@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Users, Search, Loader2, AlertCircle, Eye, Edit, X } from 'lucide-react';
-import { getParent, getParents, updateParent } from '../../services/registrarService';
+import { Users, Search, Loader2, AlertCircle, Eye, Edit, X, KeyRound } from 'lucide-react';
+import { getParent, getParents, updateParent, resetUserPassword } from '../../services/registrarService';
 
 const defaultEditForm = {
   first_name: '',
@@ -17,6 +17,7 @@ const RegistrarParentsPage = () => {
   const [details, setDetails] = useState(null);
   const [editTarget, setEditTarget] = useState(null);
   const [editForm, setEditForm] = useState(defaultEditForm);
+  const [credentialsModal, setCredentialsModal] = useState(null);
 
   const fetchParents = async () => {
     try {
@@ -85,6 +86,29 @@ const RegistrarParentsPage = () => {
       await fetchParents();
     } catch (err) {
       setError(err.response?.data?.error?.message || 'Failed to update parent.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onResetPassword = async (parent) => {
+    try {
+      setSaving(true);
+      const response = await resetUserPassword(parent.id);
+      if (!response.success) {
+        setError(response.error?.message || 'Failed to reset password.');
+        return;
+      }
+      setCredentialsModal({
+        title: 'Parent Password Reset',
+        parent: {
+          username: response.data?.username,
+          temporary_password: response.data?.new_temporary_password,
+          must_change_password: response.data?.must_change_password
+        }
+      });
+    } catch (err) {
+      setError(err.response?.data?.error?.message || 'Failed to reset password.');
     } finally {
       setSaving(false);
     }
@@ -164,6 +188,15 @@ const RegistrarParentsPage = () => {
                       >
                         <Edit className="w-4 h-4" />
                       </button>
+                      <button
+                        onClick={() => onResetPassword(parent)}
+                        disabled={saving}
+                        className="px-2.5 py-1.5 rounded text-xs font-medium bg-amber-50 text-amber-700 hover:bg-amber-100 inline-flex items-center gap-1"
+                        title="Reset Password"
+                      >
+                        <KeyRound className="w-3 h-3" />
+                        Reset
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -229,6 +262,26 @@ const RegistrarParentsPage = () => {
               </button>
             </div>
           </form>
+        </div>
+      ) : null}
+
+      {credentialsModal ? (
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-white rounded-xl p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold">{credentialsModal.title}</h3>
+              <button type="button" onClick={() => setCredentialsModal(null)} className="p-1 rounded hover:bg-gray-100">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            {credentialsModal.parent ? (
+              <div className="border border-gray-200 rounded-lg p-3 text-sm">
+                <p className="font-medium text-gray-900">Parent Credentials</p>
+                <p>Username: <span className="font-mono">{credentialsModal.parent.username}</span></p>
+                <p>Password: <span className="font-mono">{credentialsModal.parent.temporary_password}</span></p>
+              </div>
+            ) : null}
+          </div>
         </div>
       ) : null}
     </div>
