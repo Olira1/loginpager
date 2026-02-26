@@ -3,13 +3,16 @@
 
 import axios from 'axios';
 
+const isProduction = import.meta.env.PROD;
+const requestTimeoutMs = isProduction ? 20000 : 10000;
+
 // Create axios instance with base configuration
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1',
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000, // 10 second timeout
+  timeout: requestTimeoutMs,
 });
 
 // Request interceptor - Attach JWT token to all requests
