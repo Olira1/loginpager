@@ -19,6 +19,7 @@ import {
   RefreshCw,
   Trophy,
   XCircle,
+  Printer,
 } from 'lucide-react';
 import {
   sendRosterToStoreHouse,
@@ -212,6 +213,143 @@ const SendRosterPage = () => {
   const shortenSubject = (name) => {
     if (name.length <= 8) return name;
     return name.substring(0, 7) + '..';
+  };
+
+  const handlePrintRoster = () => {
+    if (!rosterData) return;
+
+    const escapeHtml = (value) =>
+      String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const subjectHeaderCells = rosterData.subjects
+      .map((subj) => `<th>${escapeHtml(subj)}</th>`)
+      .join('');
+
+    const studentRows = rosterData.students
+      .map((student, idx) => {
+        const sem1Cells = rosterData.subjects
+          .map((subj) => `<td>${escapeHtml(student.sem1.scores[subj] || '')}</td>`)
+          .join('');
+        const sem2Cells = rosterData.subjects
+          .map((subj) => `<td>${escapeHtml(student.sem2.scores[subj] || '')}</td>`)
+          .join('');
+        const avgCells = rosterData.subjects
+          .map((subj) => `<td><strong>${escapeHtml(student.avg.scores[subj] || '')}</strong></td>`)
+          .join('');
+
+        return `
+          <tr>
+            <td rowspan="3">${idx + 1}</td>
+            <td rowspan="3">${escapeHtml(student.name)}</td>
+            <td rowspan="3">${escapeHtml(student.sex)}</td>
+            <td rowspan="3">${escapeHtml(student.age)}</td>
+            <td>1</td>
+            ${sem1Cells}
+            <td><strong>${escapeHtml(student.sem1.total)}</strong></td>
+            <td><strong>${escapeHtml(student.sem1.average)}</strong></td>
+            <td>${escapeHtml(student.sem1.rank)}</td>
+            <td>${escapeHtml(student.sem1.absent)}</td>
+            <td rowspan="3">${escapeHtml(student.conduct)}</td>
+            <td rowspan="3"><strong>${escapeHtml(student.remark)}</strong></td>
+          </tr>
+          <tr>
+            <td>2</td>
+            ${sem2Cells}
+            <td><strong>${escapeHtml(student.sem2.total)}</strong></td>
+            <td><strong>${escapeHtml(student.sem2.average)}</strong></td>
+            <td>${escapeHtml(student.sem2.rank)}</td>
+            <td>${escapeHtml(student.sem2.absent)}</td>
+          </tr>
+          <tr>
+            <td><strong>Av</strong></td>
+            ${avgCells}
+            <td><strong>${escapeHtml(student.avg.total)}</strong></td>
+            <td><strong>${escapeHtml(student.avg.average)}</strong></td>
+            <td><strong>${escapeHtml(student.avg.rank)}</strong></td>
+            <td></td>
+          </tr>
+        `;
+      })
+      .join('');
+
+    const printWindow = window.open('', '_blank', 'width=1400,height=900');
+    if (!printWindow) {
+      setError('Unable to open print window. Please allow popups and try again.');
+      return;
+    }
+
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Class Roster - ${escapeHtml(rosterData.className || 'Class')}</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #111827; margin: 20px; }
+            h1 { margin: 0 0 4px; font-size: 22px; }
+            .sub { margin: 0 0 16px; color: #6b7280; font-size: 13px; }
+            .summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 12px 0 16px; }
+            .summary .card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px; }
+            .summary .label { font-size: 11px; color: #6b7280; }
+            .summary .value { font-size: 20px; font-weight: 700; margin-top: 4px; }
+            table { width: 100%; border-collapse: collapse; font-size: 11px; }
+            th, td { border: 1px solid #e5e7eb; padding: 4px 6px; text-align: center; }
+            th { background: #f9fafb; font-weight: 700; }
+            td:nth-child(2), th:nth-child(2) { text-align: left; }
+            .footer { margin-top: 10px; font-size: 10px; color: #6b7280; }
+            @media print {
+              body { margin: 8mm; }
+              @page { size: landscape; }
+            }
+          </style>
+        </head>
+        <body>
+          <h1>Class Roster Review</h1>
+          <p class="sub">
+            Class: ${escapeHtml(rosterData.className || 'N/A')} |
+            Printed at: ${escapeHtml(new Date().toLocaleString())}
+          </p>
+          <div class="summary">
+            <div class="card"><div class="label">Total Students</div><div class="value">${escapeHtml(rosterData.summary.totalStudents)}</div></div>
+            <div class="card"><div class="label">Class Average</div><div class="value">${escapeHtml(rosterData.summary.classAverage)}</div></div>
+            <div class="card"><div class="label">Promoted</div><div class="value">${escapeHtml(rosterData.summary.promoted)}</div></div>
+            <div class="card"><div class="label">Retained</div><div class="value">${escapeHtml(rosterData.summary.retained)}</div></div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>N/O</th>
+                <th>Name of student</th>
+                <th>Sex</th>
+                <th>Age</th>
+                <th>Sem</th>
+                ${subjectHeaderCells}
+                <th>Total</th>
+                <th>Aver.</th>
+                <th>Rank</th>
+                <th>Abse.</th>
+                <th>Cond</th>
+                <th>Rmark</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${studentRows}
+            </tbody>
+          </table>
+          <p class="footer">Generated from SchoolPortal Class Head roster review page.</p>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+    }, 300);
   };
 
   return (
@@ -454,18 +592,28 @@ const SendRosterPage = () => {
 
       {/* Send Button */}
       <div className="flex justify-center">
-        <button
-          onClick={handleSendRoster}
-          disabled={sending}
-          className="flex items-center gap-3 px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-colors disabled:opacity-50 text-lg font-medium shadow-lg shadow-indigo-200"
-        >
-          {sending ? (
-            <Loader2 className="w-6 h-6 animate-spin" />
-          ) : (
-            <Send className="w-6 h-6" />
-          )}
-          {sending ? 'Sending Roster...' : 'Send Roster to Store House'}
-        </button>
+        <div className="flex flex-col sm:flex-row items-center gap-3">
+          <button
+            onClick={handlePrintRoster}
+            disabled={!rosterData || loadingReview}
+            className="flex items-center gap-2 px-6 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 disabled:opacity-50"
+          >
+            <Printer className="w-5 h-5" />
+            Print Roster
+          </button>
+          <button
+            onClick={handleSendRoster}
+            disabled={sending}
+            className="flex items-center gap-3 px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-colors disabled:opacity-50 text-lg font-medium shadow-lg shadow-indigo-200"
+          >
+            {sending ? (
+              <Loader2 className="w-6 h-6 animate-spin" />
+            ) : (
+              <Send className="w-6 h-6" />
+            )}
+            {sending ? 'Sending Roster...' : 'Send Roster to Store House'}
+          </button>
+        </div>
       </div>
     </div>
   );
