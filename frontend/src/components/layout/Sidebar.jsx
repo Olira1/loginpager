@@ -9,9 +9,10 @@ import { getNavigationForRole } from '../../config/navigation';
 /**
  * Sidebar Component
  * @param {boolean} isOpen - Whether sidebar is open (mobile)
+ * @param {boolean} isMobile - Whether viewport is mobile
  * @param {function} onClose - Close sidebar callback (mobile)
  */
-const Sidebar = ({ isOpen, onClose }) => {
+const Sidebar = ({ isOpen, isMobile, onClose }) => {
   const { user } = useAuth();
   const navItems = getNavigationForRole(user?.role);
 
@@ -61,7 +62,9 @@ const Sidebar = ({ isOpen, onClose }) => {
                   key={item.path}
                   to={item.path}
                   end={item.path === `/${user?.role?.replace('_', '-')}`}
-                  onClick={onClose}
+                  onClick={() => {
+                    if (isMobile) onClose();
+                  }}
                   className={({ isActive }) => `
                     flex items-center gap-3 px-4 py-3 rounded-lg transition-colors
                     ${isActive

@@ -24,6 +24,8 @@ router.delete('/grades/:grade_id', schoolHeadController.deleteGrade);
 router.get('/grades/:grade_id/subjects', schoolHeadController.listSubjectsByGrade);
 router.post('/grades/:grade_id/subjects', schoolHeadController.addSubjectToGrade);
 router.put('/grades/:grade_id/subjects/:subject_id', schoolHeadController.updateSubjectInGrade);
+router.patch('/grades/:grade_id/subjects/:subject_id/deactivate', schoolHeadController.deactivateSubjectInGrade);
+router.patch('/grades/:grade_id/subjects/:subject_id/activate', schoolHeadController.activateSubjectInGrade);
 router.delete('/grades/:grade_id/subjects/:subject_id', schoolHeadController.removeSubjectFromGrade);
 
 // ==========================================
@@ -75,6 +77,7 @@ router.delete('/weight-templates/:template_id', schoolHeadController.deleteWeigh
 // ==========================================
 router.get('/teaching-assignments', schoolHeadController.listTeachingAssignments);
 router.post('/teaching-assignments', schoolHeadController.createTeachingAssignment);
+router.put('/teaching-assignments/:assignment_id', schoolHeadController.updateTeachingAssignment);
 router.delete('/teaching-assignments/:assignment_id', schoolHeadController.deleteTeachingAssignment);
 
 // ==========================================
@@ -90,6 +93,10 @@ router.get('/registrars', schoolHeadController.listRegistrars);
 router.put('/registrars/:user_id', schoolHeadController.updateRegistrar);
 router.patch('/registrars/:user_id/deactivate', schoolHeadController.deactivateRegistrar);
 router.patch('/registrars/:user_id/activate', schoolHeadController.activateRegistrar);
+router.delete('/registrars/:user_id', schoolHeadController.deleteRegistrar);
+router.delete('/registrars/delete/:user_id', schoolHeadController.deleteRegistrar);
+router.post('/registrars/:user_id/reset-password', schoolHeadController.resetRegistrarPassword);
+router.post('/registrars/reset-password/:user_id', schoolHeadController.resetRegistrarPassword);
 
 // ==========================================
 // STORE HOUSE USER MANAGEMENT
@@ -99,6 +106,10 @@ router.get('/store-house-users', schoolHeadController.listStoreHouseUsers);
 router.put('/store-house-users/:user_id', schoolHeadController.updateStoreHouseUser);
 router.patch('/store-house-users/:user_id/deactivate', schoolHeadController.deactivateStoreHouseUser);
 router.patch('/store-house-users/:user_id/activate', schoolHeadController.activateStoreHouseUser);
+router.delete('/store-house-users/:user_id', schoolHeadController.deleteStoreHouseUser);
+router.delete('/store-house-users/delete/:user_id', schoolHeadController.deleteStoreHouseUser);
+router.post('/store-house-users/:user_id/reset-password', schoolHeadController.resetStoreHouseUserPassword);
+router.post('/store-house-users/reset-password/:user_id', schoolHeadController.resetStoreHouseUserPassword);
 
 module.exports = router;
 

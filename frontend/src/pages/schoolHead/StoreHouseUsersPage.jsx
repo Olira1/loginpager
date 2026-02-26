@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Package, Search, Plus, Loader2, AlertCircle, Edit, X } from 'lucide-react';
+import { Package, Search, Plus, Loader2, AlertCircle, Edit, X, KeyRound, Trash2 } from 'lucide-react';
 import {
   activateStoreHouseUser,
   createStoreHouseUser,
   deactivateStoreHouseUser,
+  deleteStoreHouseUser,
   getStoreHouseUsers,
+  resetStoreHouseUserPassword,
   updateStoreHouseUser
 } from '../../services/schoolHeadService';
 
@@ -37,6 +39,7 @@ const StoreHouseUsersPage = () => {
   const [search, setSearch] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
+  const [credentialsModal, setCredentialsModal] = useState(null);
   const [createForm, setCreateForm] = useState(defaultCreateForm);
   const [editForm, setEditForm] = useState(defaultEditForm);
 
@@ -137,6 +140,47 @@ const StoreHouseUsersPage = () => {
       await fetchUsers();
     } catch (err) {
       setError(getErrorMessage(err, 'Failed to update store house user status.'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onResetPassword = async (user) => {
+    try {
+      setSaving(true);
+      const response = await resetStoreHouseUserPassword(user.id);
+      if (!response.success) {
+        setError(response.error?.message || 'Failed to reset password.');
+        return;
+      }
+      setCredentialsModal({
+        title: 'Store House User Password Reset',
+        credentials: {
+          username: response.data?.username,
+          temporary_password: response.data?.new_temporary_password
+        }
+      });
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to reset password.'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onDeleteStoreHouseUser = async (user) => {
+    const ok = window.confirm(`Delete store house user "${user.full_name}"? This action cannot be undone.`);
+    if (!ok) return;
+
+    try {
+      setSaving(true);
+      const response = await deleteStoreHouseUser(user.id);
+      if (!response.success) {
+        setError(response.error?.message || 'Failed to delete store house user.');
+        return;
+      }
+      await fetchUsers();
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to delete store house user.'));
     } finally {
       setSaving(false);
     }
@@ -245,6 +289,14 @@ const StoreHouseUsersPage = () => {
                         <Edit className="w-4 h-4" />
                       </button>
                       <button
+                        onClick={() => onResetPassword(user)}
+                        disabled={saving}
+                        className="p-1.5 rounded hover:bg-amber-50 text-amber-700"
+                        title="Reset Password"
+                      >
+                        <KeyRound className="w-4 h-4" />
+                      </button>
+                      <button
                         onClick={() => toggleStatus(user)}
                         disabled={saving}
                         className={`px-2.5 py-1.5 rounded text-xs font-medium ${
@@ -254,6 +306,14 @@ const StoreHouseUsersPage = () => {
                         }`}
                       >
                         {user.status === 'active' ? 'Deactivate' : 'Activate'}
+                      </button>
+                      <button
+                        onClick={() => onDeleteStoreHouseUser(user)}
+                        disabled={saving}
+                        className="p-1.5 rounded hover:bg-red-50 text-red-700"
+                        title="Delete Store House User"
+                      >
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   </td>
@@ -320,6 +380,27 @@ const StoreHouseUsersPage = () => {
               </button>
             </div>
           </form>
+        </div>
+      ) : null}
+
+      {credentialsModal ? (
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-white rounded-xl p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold">{credentialsModal.title}</h3>
+              <button type="button" onClick={() => setCredentialsModal(null)} className="p-1 rounded hover:bg-gray-100">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {credentialsModal.credentials ? (
+              <div className="border border-gray-200 rounded-lg p-3 text-sm">
+                <p className="font-medium text-gray-900">New Credentials</p>
+                <p>Username: <span className="font-mono">{credentialsModal.credentials.username}</span></p>
+                <p>Password: <span className="font-mono">{credentialsModal.credentials.temporary_password}</span></p>
+                <p className="text-amber-600 text-xs mt-2">User must change password on next login.</p>
+              </div>
+            ) : null}
+          </div>
         </div>
       ) : null}
     </div>

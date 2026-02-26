@@ -178,6 +178,26 @@ export const removeSubject = async (gradeId, subjectId) => {
   return response.data;
 };
 
+/**
+ * Deactivate subject before deletion
+ * @param {number} gradeId - Grade ID
+ * @param {number} subjectId - Subject ID
+ */
+export const deactivateSubject = async (gradeId, subjectId) => {
+  const response = await api.patch(`/school/grades/${gradeId}/subjects/${subjectId}/deactivate`);
+  return response.data;
+};
+
+/**
+ * Activate a previously deactivated subject
+ * @param {number} gradeId - Grade ID
+ * @param {number} subjectId - Subject ID
+ */
+export const activateSubject = async (gradeId, subjectId) => {
+  const response = await api.patch(`/school/grades/${gradeId}/subjects/${subjectId}/activate`);
+  return response.data;
+};
+
 // ============ ASSESSMENT TYPES ============
 
 /**
@@ -322,6 +342,32 @@ export const deactivateRegistrar = async (userId) => {
   return response.data;
 };
 
+/**
+ * Delete registrar account
+ * @param {number} userId - Registrar user ID
+ */
+export const deleteRegistrar = async (userId) => {
+  try {
+    const response = await api.delete(`/school/registrars/${userId}`);
+    return response.data;
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      const fallback = await api.delete(`/school/registrars/delete/${userId}`);
+      return fallback.data;
+    }
+    throw error;
+  }
+};
+
+/**
+ * Reset registrar password
+ * @param {number} userId - Registrar user ID
+ */
+export const resetRegistrarPassword = async (userId) => {
+  const response = await api.post(`/school/registrars/${userId}/reset-password`);
+  return response.data;
+};
+
 // ============ STORE HOUSE USERS ============
 
 /**
@@ -367,6 +413,32 @@ export const activateStoreHouseUser = async (userId) => {
  */
 export const deactivateStoreHouseUser = async (userId) => {
   const response = await api.patch(`/school/store-house-users/${userId}/deactivate`);
+  return response.data;
+};
+
+/**
+ * Delete store house user account
+ * @param {number} userId - Store house user ID
+ */
+export const deleteStoreHouseUser = async (userId) => {
+  try {
+    const response = await api.delete(`/school/store-house-users/${userId}`);
+    return response.data;
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      const fallback = await api.delete(`/school/store-house-users/delete/${userId}`);
+      return fallback.data;
+    }
+    throw error;
+  }
+};
+
+/**
+ * Reset store house user password
+ * @param {number} userId - Store house user ID
+ */
+export const resetStoreHouseUserPassword = async (userId) => {
+  const response = await api.post(`/school/store-house-users/${userId}/reset-password`);
   return response.data;
 };
 
@@ -441,6 +513,8 @@ export default {
   getAllSubjects,
   addSubject,
   updateSubject,
+  deactivateSubject,
+  activateSubject,
   removeSubject,
   // Assessment Types
   getAssessmentTypes,
@@ -461,12 +535,16 @@ export default {
   updateRegistrar,
   activateRegistrar,
   deactivateRegistrar,
+  deleteRegistrar,
+  resetRegistrarPassword,
   // Store House Users
   getStoreHouseUsers,
   createStoreHouseUser,
   updateStoreHouseUser,
   activateStoreHouseUser,
   deactivateStoreHouseUser,
+  deleteStoreHouseUser,
+  resetStoreHouseUserPassword,
   // Teaching Assignments
   getTeachingAssignments,
   createTeachingAssignment,

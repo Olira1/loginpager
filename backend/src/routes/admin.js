@@ -71,6 +71,8 @@ router.get('/school-heads/:user_id', adminController.getSchoolHead);
 router.put('/school-heads/:user_id', adminController.updateSchoolHead);
 router.patch('/school-heads/:user_id/deactivate', adminController.deactivateSchoolHead);
 router.patch('/school-heads/:user_id/activate', adminController.activateSchoolHead);
+router.post('/school-heads/:user_id/reset-password', adminController.resetSchoolHeadPassword);
+router.post('/school-heads/reset-password/:user_id', adminController.resetSchoolHeadPassword);
 
 // ==========================================
 // PROMOTION CRITERIA
@@ -121,6 +123,7 @@ router.delete('/promotion-criteria/:criteria_id', adminController.deletePromotio
  * @access  Admin only
  */
 router.get('/statistics', adminController.getStatistics);
+router.get('/statistics/schools/:school_id', adminController.getSchoolStatistics);
 
 module.exports = router;
 

@@ -379,6 +379,124 @@ const setAssessmentWeights = async (req, res) => {
   }
 };
 
+/**
+ * POST /api/v1/teacher/assessment-types
+ * Create assessment type from teacher assessment setup page
+ */
+const createAssessmentType = async (req, res) => {
+  try {
+    const schoolId = req.user.school_id;
+    const { name } = req.body;
+
+    const trimmedName = String(name || '').trim();
+    if (!trimmedName) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'Assessment type name is required.' }
+      });
+    }
+
+    const [existing] = await pool.query(
+      'SELECT id FROM assessment_types WHERE school_id = ? AND name = ?',
+      [schoolId, trimmedName]
+    );
+    if (existing.length > 0) {
+      return res.status(409).json({
+        success: false,
+        data: null,
+        error: { code: 'CONFLICT', message: 'Assessment type already exists.' }
+      });
+    }
+
+    const [result] = await pool.query(
+      'INSERT INTO assessment_types (school_id, name, default_weight_percent) VALUES (?, ?, ?)',
+      [schoolId, trimmedName, 0]
+    );
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        assessment_type_id: result.insertId,
+        name: trimmedName,
+        default_weight_percent: 0,
+        created_at: new Date().toISOString()
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error('Create assessment type (teacher) error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to create assessment type.' }
+    });
+  }
+};
+
+/**
+ * DELETE /api/v1/teacher/assessment-types/:assessment_type_id
+ * Delete assessment type from teacher assessment setup page
+ */
+const deleteAssessmentType = async (req, res) => {
+  try {
+    const schoolId = req.user.school_id;
+    const { assessment_type_id } = req.params;
+
+    const [existing] = await pool.query(
+      'SELECT id, name FROM assessment_types WHERE id = ? AND school_id = ?',
+      [assessment_type_id, schoolId]
+    );
+    if (existing.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: { code: 'NOT_FOUND', message: 'Assessment type not found.' }
+      });
+    }
+
+    // Protect existing grade records from accidental cascade-delete.
+    const [marks] = await pool.query(
+      `SELECT COUNT(*) as count
+       FROM marks m
+       JOIN teaching_assignments ta ON m.teaching_assignment_id = ta.id
+       JOIN classes c ON ta.class_id = c.id
+       JOIN grades g ON c.grade_id = g.id
+       WHERE m.assessment_type_id = ? AND g.school_id = ?`,
+      [assessment_type_id, schoolId]
+    );
+    if (marks[0].count > 0) {
+      return res.status(409).json({
+        success: false,
+        data: null,
+        error: { code: 'CONFLICT', message: 'Cannot delete assessment type with existing marks.' }
+      });
+    }
+
+    await pool.query(
+      'DELETE FROM assessment_types WHERE id = ? AND school_id = ?',
+      [assessment_type_id, schoolId]
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        assessment_type_id: parseInt(assessment_type_id, 10),
+        name: existing[0].name,
+        deleted: true
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error('Delete assessment type (teacher) error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to delete assessment type.' }
+    });
+  }
+};
+
 // ==========================================
 // VIEW STUDENT LIST
 // ==========================================
@@ -619,7 +737,7 @@ const listStudentGrades = async (req, res) => {
  */
 const enterGrade = async (req, res) => {
   try {
-    const { student_id, class_id, subject_id, semester_id, assessment_type_id, score, max_score, remarks } = req.body;
+    const { student_id, class_id, subject_id, semester_id, assessment_type_id, score, remarks } = req.body;
     const teacherId = req.user.id;
 
     // Verify assignment
@@ -632,12 +750,40 @@ const enterGrade = async (req, res) => {
       });
     }
 
-    // Validate score
-    if (score < 0 || score > max_score) {
+    const numericScore = parseFloat(score);
+    if (Number.isNaN(numericScore)) {
       return res.status(400).json({
         success: false,
         data: null,
-        error: { code: 'VALIDATION_ERROR', message: 'Invalid score.' }
+        error: { code: 'VALIDATION_ERROR', message: 'Score must be a number.' }
+      });
+    }
+
+    // Resolve the allowed max score for this assessment type.
+    const [maxInfo] = await pool.query(
+      `SELECT COALESCE(aw.weight_percent, at.default_weight_percent) as allowed_max
+       FROM assessment_types at
+       LEFT JOIN assessment_weights aw ON aw.assessment_type_id = at.id
+                                      AND aw.teaching_assignment_id = ?
+                                      AND aw.semester_id = ?
+       WHERE at.id = ?`,
+      [assignment.id, semester_id, assessment_type_id]
+    );
+    if (maxInfo.length === 0) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid assessment type.' }
+      });
+    }
+    const allowedMax = parseFloat(maxInfo[0].allowed_max) || 0;
+
+    // Validate score
+    if (numericScore < 0 || numericScore > allowedMax) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: `Score must be between 0 and ${allowedMax}.` }
       });
     }
 
@@ -654,14 +800,14 @@ const enterGrade = async (req, res) => {
       gradeId = existing[0].id;
       await pool.query(
         'UPDATE marks SET score = ?, max_score = ?, remarks = ?, updated_at = NOW() WHERE id = ?',
-        [score, max_score, remarks || null, gradeId]
+        [numericScore, allowedMax, remarks || null, gradeId]
       );
     } else {
       // Insert new
       const [result] = await pool.query(
         `INSERT INTO marks (student_id, teaching_assignment_id, assessment_type_id, semester_id, score, max_score, remarks)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [student_id, assignment.id, assessment_type_id, semester_id, score, max_score, remarks || null]
+        [student_id, assignment.id, assessment_type_id, semester_id, numericScore, allowedMax, remarks || null]
       );
       gradeId = result.insertId;
     }
@@ -684,7 +830,7 @@ const enterGrade = async (req, res) => {
       [student_id]
     );
 
-    const weightedScore = (score / max_score) * (typeInfo[0]?.weight_percent || 0);
+    const weightedScore = (numericScore / allowedMax) * (typeInfo[0]?.weight_percent || 0);
 
     return res.status(201).json({
       success: true,
@@ -693,8 +839,8 @@ const enterGrade = async (req, res) => {
         student_id: student_id,
         student_name: studentInfo[0]?.name || 'Unknown',
         assessment_type: typeInfo[0]?.name,
-        score: score,
-        max_score: max_score,
+        score: numericScore,
+        max_score: allowedMax,
         weight_percent: typeInfo[0]?.weight_percent,
         weighted_score: Math.round(weightedScore * 100) / 100,
         entered_at: new Date().toISOString()
@@ -717,7 +863,7 @@ const enterGrade = async (req, res) => {
  */
 const enterBulkGrades = async (req, res) => {
   try {
-    const { class_id, subject_id, semester_id, assessment_type_id, max_score, grades } = req.body;
+    const { class_id, subject_id, semester_id, assessment_type_id, grades } = req.body;
     const teacherId = req.user.id;
 
     // Verify assignment
@@ -730,6 +876,24 @@ const enterBulkGrades = async (req, res) => {
       });
     }
 
+    const [maxInfo] = await pool.query(
+      `SELECT COALESCE(aw.weight_percent, at.default_weight_percent) as allowed_max
+       FROM assessment_types at
+       LEFT JOIN assessment_weights aw ON aw.assessment_type_id = at.id
+                                      AND aw.teaching_assignment_id = ?
+                                      AND aw.semester_id = ?
+       WHERE at.id = ?`,
+      [assignment.id, semester_id, assessment_type_id]
+    );
+    if (maxInfo.length === 0) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid assessment type.' }
+      });
+    }
+    const allowedMax = parseFloat(maxInfo[0].allowed_max) || 0;
+
     const results = [];
     let successful = 0;
     let failed = 0;
@@ -737,8 +901,9 @@ const enterBulkGrades = async (req, res) => {
     for (const g of grades) {
       try {
         // Validate score
-        if (g.score < 0 || g.score > max_score) {
-          results.push({ student_id: g.student_id, status: 'failed', error: 'Invalid score' });
+        const numericScore = parseFloat(g.score);
+        if (Number.isNaN(numericScore) || numericScore < 0 || numericScore > allowedMax) {
+          results.push({ student_id: g.student_id, status: 'failed', error: `Score must be between 0 and ${allowedMax}` });
           failed++;
           continue;
         }
@@ -755,13 +920,13 @@ const enterBulkGrades = async (req, res) => {
           gradeId = existing[0].id;
           await pool.query(
             'UPDATE marks SET score = ?, max_score = ?, updated_at = NOW() WHERE id = ?',
-            [g.score, max_score, gradeId]
+            [numericScore, allowedMax, gradeId]
           );
         } else {
           const [result] = await pool.query(
             `INSERT INTO marks (student_id, teaching_assignment_id, assessment_type_id, semester_id, score, max_score)
              VALUES (?, ?, ?, ?, ?, ?)`,
-            [g.student_id, assignment.id, assessment_type_id, semester_id, g.score, max_score]
+            [g.student_id, assignment.id, assessment_type_id, semester_id, numericScore, allowedMax]
           );
           gradeId = result.insertId;
         }
@@ -844,10 +1009,21 @@ const updateGrade = async (req, res) => {
       });
     }
 
+    if (score !== undefined) {
+      const numericScore = parseFloat(score);
+      if (Number.isNaN(numericScore) || numericScore < 0 || numericScore > gradeInfo[0].max_score) {
+        return res.status(400).json({
+          success: false,
+          data: null,
+          error: { code: 'VALIDATION_ERROR', message: `Score must be between 0 and ${gradeInfo[0].max_score}.` }
+        });
+      }
+    }
+
     // Update
     const updates = [];
     const params = [];
-    if (score !== undefined) { updates.push('score = ?'); params.push(score); }
+    if (score !== undefined) { updates.push('score = ?'); params.push(parseFloat(score)); }
     if (remarks !== undefined) { updates.push('remarks = ?'); params.push(remarks); }
     updates.push('updated_at = NOW()');
     params.push(grade_id);
@@ -1239,6 +1415,8 @@ module.exports = {
   getWeightSuggestions,
   getAssessmentWeights,
   setAssessmentWeights,
+  createAssessmentType,
+  deleteAssessmentType,
   getStudentList,
   listStudentGrades,
   enterGrade,

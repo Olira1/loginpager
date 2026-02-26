@@ -8,6 +8,7 @@ import {
   Users,
   Plus, 
   Trash2, 
+  Edit2,
   Search,
   Filter,
   Loader2,
@@ -23,11 +24,12 @@ import {
   getSubjects,
   getTeachingAssignments,
   createTeachingAssignment,
+  updateTeachingAssignment,
   deleteTeachingAssignment
 } from '../../services/schoolHeadService';
 
 // Assignment Row
-const AssignmentRow = ({ assignment, onDelete }) => {
+const AssignmentRow = ({ assignment, onEdit, onDelete }) => {
   return (
     <tr className="hover:bg-gray-50">
       <td className="px-4 py-3">
@@ -42,13 +44,22 @@ const AssignmentRow = ({ assignment, onDelete }) => {
       <td className="px-4 py-3 text-gray-600">{assignment.class?.name}</td>
       <td className="px-4 py-3 text-gray-600">{assignment.subject?.name}</td>
       <td className="px-4 py-3">
-        <button
-          onClick={() => onDelete(assignment)}
-          className="p-1.5 text-red-500 hover:bg-red-50 rounded"
-          title="Remove Assignment"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => onEdit(assignment)}
+            className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded"
+            title="Edit Assignment"
+          >
+            <Edit2 className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => onDelete(assignment)}
+            className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+            title="Remove Assignment"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
       </td>
     </tr>
   );
@@ -296,6 +307,232 @@ const CreateAssignmentModal = ({ isOpen, teachers, grades, onClose, onSave }) =>
   );
 };
 
+// Edit Assignment Modal
+const EditAssignmentModal = ({ isOpen, assignment, teachers, grades, onClose, onSave }) => {
+  const [step, setStep] = useState(1);
+  const [formData, setFormData] = useState({
+    teacher_id: '',
+    grade_id: '',
+    class_id: '',
+    subject_id: ''
+  });
+  const [classes, setClasses] = useState([]);
+  const [subjects, setSubjects] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [loadingOptions, setLoadingOptions] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (isOpen && assignment) {
+      setStep(1);
+      setFormData({
+        teacher_id: assignment.teacher?.id?.toString() || '',
+        grade_id: assignment.class?.grade_id?.toString() || '',
+        class_id: assignment.class?.id?.toString() || '',
+        subject_id: assignment.subject?.id?.toString() || ''
+      });
+      setClasses([]);
+      setSubjects([]);
+      setError(null);
+    }
+  }, [isOpen, assignment]);
+
+  useEffect(() => {
+    if (formData.grade_id) {
+      fetchClassesAndSubjects(formData.grade_id);
+    } else {
+      setClasses([]);
+      setSubjects([]);
+    }
+  }, [formData.grade_id]);
+
+  const fetchClassesAndSubjects = async (gradeId) => {
+    setLoadingOptions(true);
+    try {
+      const [classesRes, subjectsRes] = await Promise.all([
+        getClasses(gradeId),
+        getSubjects(gradeId)
+      ]);
+      if (classesRes.success) {
+        setClasses(classesRes.data.items || []);
+      }
+      if (subjectsRes.success) {
+        setSubjects(subjectsRes.data.items || []);
+      }
+    } catch (err) {
+      console.error('Error fetching options:', err);
+    } finally {
+      setLoadingOptions(false);
+    }
+  };
+
+  const handleNext = () => {
+    if (step === 1 && formData.teacher_id) {
+      setStep(2);
+    } else if (step === 2 && formData.grade_id) {
+      setStep(3);
+    }
+  };
+
+  const handleBack = () => {
+    if (step === 2) {
+      setStep(1);
+    } else if (step === 3) {
+      setStep(2);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    try {
+      await onSave({
+        teacher_id: parseInt(formData.teacher_id),
+        class_id: parseInt(formData.class_id),
+        subject_id: parseInt(formData.subject_id)
+      });
+      onClose();
+    } catch (err) {
+      const errorData = err.response?.data?.error;
+      setError(typeof errorData === 'object' ? errorData.message : errorData || 'Failed to update assignment');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isOpen || !assignment) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+          <h2 className="text-xl font-semibold text-gray-900">Edit Teaching Assignment</h2>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+
+        <div className="flex items-center justify-center gap-2 py-4 px-6 bg-gray-50">
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${step >= 1 ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-500'}`}>1</div>
+          <div className={`w-16 h-1 ${step >= 2 ? 'bg-indigo-600' : 'bg-gray-200'}`} />
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${step >= 2 ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-500'}`}>2</div>
+          <div className={`w-16 h-1 ${step >= 3 ? 'bg-indigo-600' : 'bg-gray-200'}`} />
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${step >= 3 ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-500'}`}>3</div>
+        </div>
+
+        <div className="p-6">
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700 text-sm">
+              <AlertCircle className="w-4 h-4" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {step === 1 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Select Teacher</label>
+              <select
+                value={formData.teacher_id}
+                onChange={(e) => setFormData({ ...formData, teacher_id: e.target.value })}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              >
+                <option value="">-- Choose a teacher --</option>
+                {teachers.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {step === 2 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Select Grade</label>
+              <select
+                value={formData.grade_id}
+                onChange={(e) => setFormData({ ...formData, grade_id: e.target.value, class_id: '', subject_id: '' })}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              >
+                <option value="">-- Choose a grade --</option>
+                {grades.map((g) => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {step === 3 && (
+            <div className="space-y-4">
+              {loadingOptions ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Select Class</label>
+                    <select
+                      value={formData.class_id}
+                      onChange={(e) => setFormData({ ...formData, class_id: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    >
+                      <option value="">-- Choose a class --</option>
+                      {classes.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Select Subject</label>
+                    <select
+                      value={formData.subject_id}
+                      onChange={(e) => setFormData({ ...formData, subject_id: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    >
+                      <option value="">-- Choose a subject --</option>
+                      {subjects.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-between p-6 border-t border-gray-200">
+          <button
+            onClick={step === 1 ? onClose : handleBack}
+            className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
+          >
+            {step === 1 ? 'Cancel' : 'Back'}
+          </button>
+          {step < 3 ? (
+            <button
+              onClick={handleNext}
+              disabled={(step === 1 && !formData.teacher_id) || (step === 2 && !formData.grade_id)}
+              className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          ) : (
+            <button
+              onClick={handleSubmit}
+              disabled={loading || !formData.class_id || !formData.subject_id}
+              className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+              Save Changes
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Confirm Delete Modal
 const ConfirmDeleteModal = ({ isOpen, assignment, onConfirm, onCancel, loading }) => {
   if (!isOpen) return null;
@@ -340,6 +577,7 @@ const TeacherAssignmentsPage = () => {
 
   // Modal states
   const [createModal, setCreateModal] = useState(false);
+  const [editModal, setEditModal] = useState({ open: false, assignment: null });
   const [deleteModal, setDeleteModal] = useState({ open: false, assignment: null });
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -396,6 +634,13 @@ const TeacherAssignmentsPage = () => {
   const handleCreate = async (formData) => {
     await createTeachingAssignment(formData);
     fetchData();
+  };
+
+  // Handle edit
+  const handleEdit = async (formData) => {
+    await updateTeachingAssignment(editModal.assignment.id, formData);
+    fetchData();
+    setEditModal({ open: false, assignment: null });
   };
 
   // Handle delete
@@ -541,6 +786,7 @@ const TeacherAssignmentsPage = () => {
                       <AssignmentRow
                         key={assignment.id}
                         assignment={assignment}
+                        onEdit={() => setEditModal({ open: true, assignment })}
                         onDelete={() => setDeleteModal({ open: true, assignment })}
                       />
                     ))}
@@ -565,6 +811,15 @@ const TeacherAssignmentsPage = () => {
         grades={grades}
         onClose={() => setCreateModal(false)}
         onSave={handleCreate}
+      />
+
+      <EditAssignmentModal
+        isOpen={editModal.open}
+        assignment={editModal.assignment}
+        teachers={teachers}
+        grades={grades}
+        onClose={() => setEditModal({ open: false, assignment: null })}
+        onSave={handleEdit}
       />
 
       <ConfirmDeleteModal

@@ -126,6 +126,16 @@ export const deactivateSchoolHead = async (userId) => {
   return response.data;
 };
 
+/**
+ * Reset school head password
+ * @param {number} userId - School head user ID
+ * @returns {Promise<{success, data: {username, new_temporary_password}}>}
+ */
+export const resetSchoolHeadPassword = async (userId) => {
+  const response = await api.post(`/admin/school-heads/${userId}/reset-password`);
+  return response.data;
+};
+
 // ============ PROMOTION CRITERIA ============
 
 /**
@@ -209,6 +219,7 @@ export default {
   updateSchoolHead,
   activateSchoolHead,
   deactivateSchoolHead,
+  resetSchoolHeadPassword,
   // Promotion Criteria
   getPromotionCriteria,
   getPromotionCriteriaById,

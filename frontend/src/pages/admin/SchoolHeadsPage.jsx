@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { UserCog, Search, Plus, Loader2, AlertCircle, Edit, X } from 'lucide-react';
+import { UserCog, Search, Plus, Loader2, AlertCircle, Edit, X, KeyRound } from 'lucide-react';
 import {
   activateSchoolHead,
   createSchoolHead,
@@ -7,6 +7,7 @@ import {
   getSchoolHead,
   getSchoolHeads,
   getSchools,
+  resetSchoolHeadPassword,
   updateSchoolHead
 } from '../../services/adminService';
 
@@ -43,6 +44,7 @@ const SchoolHeadsPage = () => {
   const [schoolFilter, setSchoolFilter] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
+  const [credentialsModal, setCredentialsModal] = useState(null);
   const [createForm, setCreateForm] = useState(initialCreateForm);
   const [editForm, setEditForm] = useState(initialEditForm);
 
@@ -192,6 +194,28 @@ const SchoolHeadsPage = () => {
     }
   };
 
+  const onResetPassword = async (head) => {
+    try {
+      setSaving(true);
+      const response = await resetSchoolHeadPassword(head.id);
+      if (!response.success) {
+        setError(response.error?.message || 'Failed to reset password.');
+        return;
+      }
+      setCredentialsModal({
+        title: 'School Head Password Reset',
+        credentials: {
+          username: response.data?.username,
+          temporary_password: response.data?.new_temporary_password
+        }
+      });
+    } catch (err) {
+      setError(getApiError(err, 'Failed to reset password.'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
@@ -305,6 +329,14 @@ const SchoolHeadsPage = () => {
                         title="Edit"
                       >
                         <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => onResetPassword(head)}
+                        disabled={saving}
+                        className="p-1.5 rounded hover:bg-amber-50 text-amber-700"
+                        title="Reset Password"
+                      >
+                        <KeyRound className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => toggleStatus(head)}
@@ -472,6 +504,27 @@ const SchoolHeadsPage = () => {
               </button>
             </div>
           </form>
+        </div>
+      ) : null}
+
+      {credentialsModal ? (
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-white rounded-xl p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold">{credentialsModal.title}</h3>
+              <button type="button" onClick={() => setCredentialsModal(null)} className="p-1 rounded hover:bg-gray-100">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {credentialsModal.credentials ? (
+              <div className="border border-gray-200 rounded-lg p-3 text-sm">
+                <p className="font-medium text-gray-900">New Credentials</p>
+                <p>Username: <span className="font-mono">{credentialsModal.credentials.username}</span></p>
+                <p>Password: <span className="font-mono">{credentialsModal.credentials.temporary_password}</span></p>
+                <p className="text-amber-600 text-xs mt-2">User must change password on next login.</p>
+              </div>
+            ) : null}
+          </div>
         </div>
       ) : null}
     </div>

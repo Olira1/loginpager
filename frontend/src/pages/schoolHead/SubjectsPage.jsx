@@ -7,6 +7,7 @@ import {
   BookOpen, 
   Plus, 
   Edit2, 
+  Power,
   Trash2, 
   ChevronDown,
   ChevronRight,
@@ -19,11 +20,13 @@ import {
   getSubjects,
   addSubject,
   updateSubject,
+  deactivateSubject,
+  activateSubject,
   removeSubject
 } from '../../services/schoolHeadService';
 
 // Subject Row
-const SubjectRow = ({ subject, onEdit, onDelete }) => {
+const SubjectRow = ({ subject, onEdit, onToggleActive, onDelete }) => {
   return (
     <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200">
       <div className="flex items-center gap-3">
@@ -32,6 +35,9 @@ const SubjectRow = ({ subject, onEdit, onDelete }) => {
         </div>
         <div>
           <span className="font-medium text-gray-900">{subject.name}</span>
+          <span className={`ml-2 text-xs px-2 py-0.5 rounded ${subject.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>
+            {subject.is_active ? 'Active' : 'Deactivated'}
+          </span>
           {subject.code && (
             <span className="ml-2 text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{subject.code}</span>
           )}
@@ -50,9 +56,17 @@ const SubjectRow = ({ subject, onEdit, onDelete }) => {
           <Edit2 className="w-4 h-4" />
         </button>
         <button
+          onClick={() => onToggleActive(subject)}
+          className={`p-1.5 rounded transition-colors ${subject.is_active ? 'text-amber-600 hover:bg-amber-50' : 'text-green-600 hover:bg-green-50'}`}
+          title={subject.is_active ? 'Deactivate Subject' : 'Activate Subject'}
+        >
+          <Power className="w-4 h-4" />
+        </button>
+        <button
           onClick={() => onDelete(subject)}
-          className="p-1.5 text-red-500 hover:bg-red-50 rounded transition-colors"
-          title="Remove Subject"
+          className={`p-1.5 rounded transition-colors ${subject.is_active ? 'text-gray-300 cursor-not-allowed' : 'text-red-500 hover:bg-red-50'}`}
+          title={subject.is_active ? 'Deactivate first, then delete' : 'Remove Subject'}
+          disabled={subject.is_active}
         >
           <Trash2 className="w-4 h-4" />
         </button>
@@ -62,7 +76,7 @@ const SubjectRow = ({ subject, onEdit, onDelete }) => {
 };
 
 // Grade Subjects Card
-const GradeSubjectsCard = ({ grade, isExpanded, onToggle, subjects, loadingSubjects, onAddSubject, onEditSubject, onDeleteSubject }) => {
+const GradeSubjectsCard = ({ grade, isExpanded, onToggle, subjects, loadingSubjects, onAddSubject, onEditSubject, onToggleSubjectActive, onDeleteSubject }) => {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
       {/* Grade Header */}
@@ -104,6 +118,7 @@ const GradeSubjectsCard = ({ grade, isExpanded, onToggle, subjects, loadingSubje
                   key={subject.id}
                   subject={subject}
                   onEdit={(s) => onEditSubject(grade, s)}
+                  onToggleActive={(s) => onToggleSubjectActive(grade, s)}
                   onDelete={(s) => onDeleteSubject(grade, s)}
                 />
               ))}
@@ -120,9 +135,7 @@ const SubjectModal = ({ isOpen, mode, grade, subject, onClose, onSave }) => {
   const [formData, setFormData] = useState({
     name: '',
     code: '',
-    credit_hours: 4,
-    is_required: true,
-    description: ''
+    is_required: true
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -132,12 +145,10 @@ const SubjectModal = ({ isOpen, mode, grade, subject, onClose, onSave }) => {
       setFormData({
         name: subject.name || '',
         code: subject.code || '',
-        credit_hours: subject.credit_hours || 4,
-        is_required: subject.is_required ?? true,
-        description: subject.description || ''
+        is_required: subject.is_required ?? true
       });
     } else {
-      setFormData({ name: '', code: '', credit_hours: 4, is_required: true, description: '' });
+      setFormData({ name: '', code: '', is_required: true });
     }
     setError(null);
   }, [subject, mode, isOpen]);
@@ -204,19 +215,8 @@ const SubjectModal = ({ isOpen, mode, grade, subject, onClose, onSave }) => {
             />
           </div> */}
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Credit Hours</label>
-              <input
-                type="number"
-                value={formData.credit_hours}
-                onChange={(e) => setFormData({ ...formData, credit_hours: parseInt(e.target.value) || 0 })}
-                min="1"
-                max="10"
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              />
-            </div>
-            <div className="flex items-center pt-7">
+          <div>
+            <div className="flex items-center">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -227,17 +227,6 @@ const SubjectModal = ({ isOpen, mode, grade, subject, onClose, onSave }) => {
                 <span className="text-sm text-gray-700">Required Subject</span>
               </label>
             </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Description</label>
-            <textarea
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              rows={2}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              placeholder="Optional description..."
-            />
           </div>
 
           <div className="flex justify-end gap-3 pt-4">
@@ -260,16 +249,22 @@ const SubjectModal = ({ isOpen, mode, grade, subject, onClose, onSave }) => {
 };
 
 // Confirm Delete Modal
-const ConfirmDeleteModal = ({ isOpen, subject, onConfirm, onCancel, loading }) => {
+const ConfirmDeleteModal = ({ isOpen, subject, onConfirm, onCancel, loading, error }) => {
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
         <h2 className="text-xl font-semibold text-gray-900 mb-2">Remove Subject</h2>
-        <p className="text-gray-600 mb-6">
+        <p className="text-gray-600 mb-4">
           Are you sure you want to remove "{subject?.name}" from this grade? This may affect existing grade records.
         </p>
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700 text-sm">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
         <div className="flex justify-end gap-3">
           <button onClick={onCancel} disabled={loading} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
             Cancel
@@ -302,6 +297,7 @@ const SubjectsPage = () => {
   // Modal states
   const [subjectModal, setSubjectModal] = useState({ open: false, mode: 'create', grade: null, subject: null });
   const [deleteModal, setDeleteModal] = useState({ open: false, grade: null, subject: null });
+  const [deleteError, setDeleteError] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
 
   // Fetch grades
@@ -372,15 +368,36 @@ const SubjectsPage = () => {
     fetchSubjects(subjectModal.grade.id);
   };
 
+  const handleToggleSubjectActive = async (grade, subject) => {
+    setActionLoading(true);
+    setDeleteError(null);
+    try {
+      if (subject.is_active) {
+        await deactivateSubject(grade.id, subject.id);
+      } else {
+        await activateSubject(grade.id, subject.id);
+      }
+      fetchSubjects(grade.id);
+    } catch (err) {
+      const errorData = err.response?.data?.error;
+      setDeleteError(typeof errorData === 'object' ? errorData.message : errorData || 'Failed to update subject status.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // Handle delete
   const handleDelete = async () => {
     setActionLoading(true);
+    setDeleteError(null);
     try {
       await removeSubject(deleteModal.grade.id, deleteModal.subject.id);
       fetchSubjects(deleteModal.grade.id);
       setDeleteModal({ open: false, grade: null, subject: null });
     } catch (err) {
       console.error('Delete error:', err);
+      const errorData = err.response?.data?.error;
+      setDeleteError(typeof errorData === 'object' ? errorData.message : errorData || 'Failed to remove subject.');
     } finally {
       setActionLoading(false);
     }
@@ -409,10 +426,10 @@ const SubjectsPage = () => {
       </div>
 
       {/* Error */}
-      {error && (
+      {(error || deleteError) && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-3 text-red-700">
           <AlertCircle className="w-5 h-5 flex-shrink-0" />
-          <span>{error}</span>
+          <span>{error || deleteError}</span>
         </div>
       )}
 
@@ -435,7 +452,8 @@ const SubjectsPage = () => {
               loadingSubjects={loadingSubjects[grade.id]}
               onAddSubject={(g) => setSubjectModal({ open: true, mode: 'create', grade: g, subject: null })}
               onEditSubject={(g, s) => setSubjectModal({ open: true, mode: 'edit', grade: g, subject: s })}
-              onDeleteSubject={(g, s) => setDeleteModal({ open: true, grade: g, subject: s })}
+              onToggleSubjectActive={handleToggleSubjectActive}
+              onDeleteSubject={(g, s) => { setDeleteError(null); setDeleteModal({ open: true, grade: g, subject: s }); }}
             />
           ))}
         </div>
@@ -455,8 +473,9 @@ const SubjectsPage = () => {
         isOpen={deleteModal.open}
         subject={deleteModal.subject}
         onConfirm={handleDelete}
-        onCancel={() => setDeleteModal({ open: false, grade: null, subject: null })}
+        onCancel={() => { setDeleteError(null); setDeleteModal({ open: false, grade: null, subject: null }); }}
         loading={actionLoading}
+        error={deleteError}
       />
     </div>
   );

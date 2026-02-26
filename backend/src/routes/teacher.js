@@ -21,6 +21,8 @@ router.get('/subjects', teacherController.listAssignedSubjects);
 router.get('/assessment-weights/suggestions', teacherController.getWeightSuggestions);
 router.get('/assessment-weights', teacherController.getAssessmentWeights);
 router.post('/assessment-weights', teacherController.setAssessmentWeights);
+router.post('/assessment-types', teacherController.createAssessmentType);
+router.delete('/assessment-types/:assessment_type_id', teacherController.deleteAssessmentType);
 
 // ==========================================
 // STUDENT LIST

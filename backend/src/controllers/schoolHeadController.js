@@ -4,7 +4,7 @@
 
 const { pool } = require('../config/db');
 const bcrypt = require('bcryptjs');
-const { validatePasswordStrength } = require('../utils/passwordGenerator');
+const { validatePasswordStrength, generatePassword, hashPassword } = require('../utils/passwordGenerator');
 
 // Helper to get current academic year
 const getCurrentAcademicYear = async () => {
@@ -725,13 +725,13 @@ const listSubjects = async (req, res) => {
     const schoolId = req.user.school_id;
 
     const [subjects] = await pool.query(
-      'SELECT * FROM subjects WHERE school_id = ? ORDER BY name',
+      'SELECT * FROM subjects WHERE school_id = ? ORDER BY is_active DESC, name',
       [schoolId]
     );
 
     return res.status(200).json({
       success: true,
-      data: { items: subjects },
+      data: { items: subjects.map((s) => ({ ...s, is_active: !!s.is_active })) },
       error: null
     });
   } catch (error) {
@@ -861,6 +861,7 @@ const addSubjectToGrade = async (req, res) => {
         description: description || null,
         grade_id: parseInt(grade_id),
         school_id: schoolId,
+        is_active: true,
         created_at: new Date().toISOString()
       },
       error: null
@@ -902,13 +903,13 @@ const listSubjectsByGrade = async (req, res) => {
 
     // Return all subjects for this school (school-wide in current schema)
     const [subjects] = await pool.query(
-      'SELECT * FROM subjects WHERE school_id = ? ORDER BY name',
+      'SELECT * FROM subjects WHERE school_id = ? ORDER BY is_active DESC, name',
       [schoolId]
     );
 
     return res.status(200).json({
       success: true,
-      data: { items: subjects },
+      data: { items: subjects.map((s) => ({ ...s, is_active: !!s.is_active })) },
       error: null
     });
   } catch (error) {
@@ -1012,6 +1013,7 @@ const updateSubjectInGrade = async (req, res) => {
         code: code || null,
         credit_hours: credit_hours || null,
         is_required: is_required || false,
+        is_active: !!existing[0].is_active,
         description: description || null,
         grade_id: parseInt(grade_id),
         updated: true
@@ -1050,17 +1052,11 @@ const deleteSubject = async (req, res) => {
       });
     }
 
-    // Check for teaching assignments
-    const [assignments] = await pool.query(
-      'SELECT COUNT(*) as count FROM teaching_assignments WHERE subject_id = ?',
-      [subject_id]
-    );
-
-    if (assignments[0].count > 0) {
+    if (existing[0].is_active) {
       return res.status(409).json({
         success: false,
         data: null,
-        error: { code: 'CONFLICT', message: 'Subject has teaching assignments.' }
+        error: { code: 'CONFLICT', message: 'Deactivate subject before deleting it.' }
       });
     }
 
@@ -1118,17 +1114,11 @@ const removeSubjectFromGrade = async (req, res) => {
       });
     }
 
-    // Check for teaching assignments
-    const [assignments] = await pool.query(
-      'SELECT COUNT(*) as count FROM teaching_assignments WHERE subject_id = ?',
-      [subject_id]
-    );
-
-    if (assignments[0].count > 0) {
+    if (existing[0].is_active) {
       return res.status(409).json({
         success: false,
         data: null,
-        error: { code: 'CONFLICT', message: 'Cannot remove subject. It has active teaching assignments.' }
+        error: { code: 'CONFLICT', message: 'Deactivate subject before removing it.' }
       });
     }
 
@@ -1145,6 +1135,120 @@ const removeSubjectFromGrade = async (req, res) => {
       success: false,
       data: null,
       error: { code: 'INTERNAL_ERROR', message: 'Failed to remove subject.' }
+    });
+  }
+};
+
+/**
+ * PATCH /api/v1/school/grades/:grade_id/subjects/:subject_id/deactivate
+ * Deactivate subject in grade context (soft delete prerequisite)
+ */
+const deactivateSubjectInGrade = async (req, res) => {
+  try {
+    const { grade_id, subject_id } = req.params;
+    const schoolId = req.user.school_id;
+
+    const [grade] = await pool.query(
+      'SELECT id FROM grades WHERE id = ? AND school_id = ?',
+      [grade_id, schoolId]
+    );
+    if (grade.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: { code: 'NOT_FOUND', message: 'Grade not found.' }
+      });
+    }
+
+    const [existing] = await pool.query(
+      'SELECT id, is_active FROM subjects WHERE id = ? AND school_id = ?',
+      [subject_id, schoolId]
+    );
+    if (existing.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: { code: 'NOT_FOUND', message: 'Subject not found.' }
+      });
+    }
+
+    if (!existing[0].is_active) {
+      return res.status(200).json({
+        success: true,
+        data: { id: parseInt(subject_id, 10), is_active: false, message: 'Subject is already deactivated.' },
+        error: null
+      });
+    }
+
+    await pool.query('UPDATE subjects SET is_active = false WHERE id = ?', [subject_id]);
+    return res.status(200).json({
+      success: true,
+      data: { id: parseInt(subject_id, 10), is_active: false, message: 'Subject deactivated successfully.' },
+      error: null
+    });
+  } catch (error) {
+    console.error('Deactivate subject in grade error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to deactivate subject.' }
+    });
+  }
+};
+
+/**
+ * PATCH /api/v1/school/grades/:grade_id/subjects/:subject_id/activate
+ * Activate subject in grade context
+ */
+const activateSubjectInGrade = async (req, res) => {
+  try {
+    const { grade_id, subject_id } = req.params;
+    const schoolId = req.user.school_id;
+
+    const [grade] = await pool.query(
+      'SELECT id FROM grades WHERE id = ? AND school_id = ?',
+      [grade_id, schoolId]
+    );
+    if (grade.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: { code: 'NOT_FOUND', message: 'Grade not found.' }
+      });
+    }
+
+    const [existing] = await pool.query(
+      'SELECT id, is_active FROM subjects WHERE id = ? AND school_id = ?',
+      [subject_id, schoolId]
+    );
+    if (existing.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: { code: 'NOT_FOUND', message: 'Subject not found.' }
+      });
+    }
+
+    if (existing[0].is_active) {
+      return res.status(200).json({
+        success: true,
+        data: { id: parseInt(subject_id, 10), is_active: true, message: 'Subject is already active.' },
+        error: null
+      });
+    }
+
+    await pool.query('UPDATE subjects SET is_active = true WHERE id = ?', [subject_id]);
+    return res.status(200).json({
+      success: true,
+      data: { id: parseInt(subject_id, 10), is_active: true, message: 'Subject activated successfully.' },
+      error: null
+    });
+  } catch (error) {
+    console.error('Activate subject in grade error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to activate subject.' }
     });
   }
 };
@@ -1613,7 +1717,7 @@ const listTeachingAssignments = async (req, res) => {
     let query = `
       SELECT ta.*, 
              u.name as teacher_name, u.phone as teacher_phone,
-             c.name as class_name, g.name as grade_name, g.level as grade_level,
+             c.name as class_name, g.id as grade_id, g.name as grade_name, g.level as grade_level,
              s.name as subject_name
       FROM teaching_assignments ta
       JOIN users u ON ta.teacher_id = u.id
@@ -1635,7 +1739,7 @@ const listTeachingAssignments = async (req, res) => {
     const items = assignments.map(a => ({
       id: a.id,
       teacher: { id: a.teacher_id, name: a.teacher_name, phone: a.teacher_phone },
-      class: { id: a.class_id, name: a.class_name, grade_name: a.grade_name },
+      class: { id: a.class_id, name: a.class_name, grade_id: a.grade_id, grade_name: a.grade_name },
       subject: { id: a.subject_id, name: a.subject_name }
     }));
 
@@ -1701,6 +1805,26 @@ const createTeachingAssignment = async (req, res) => {
       });
     }
 
+    // Verify subject belongs to school and is active
+    const [subject] = await pool.query(
+      'SELECT id, is_active FROM subjects WHERE id = ? AND school_id = ?',
+      [subject_id, schoolId]
+    );
+    if (subject.length === 0) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid subject.' }
+      });
+    }
+    if (!subject[0].is_active) {
+      return res.status(409).json({
+        success: false,
+        data: null,
+        error: { code: 'CONFLICT', message: 'Cannot assign an inactive subject.' }
+      });
+    }
+
     // Get current academic year
     const academicYear = await getCurrentAcademicYear();
 
@@ -1736,6 +1860,125 @@ const createTeachingAssignment = async (req, res) => {
       success: false,
       data: null,
       error: { code: 'INTERNAL_ERROR', message: 'Failed to create teaching assignment.' }
+    });
+  }
+};
+
+/**
+ * PUT /api/v1/school/teaching-assignments/:assignment_id
+ * Update teaching assignment (teacher, class, or subject)
+ */
+const updateTeachingAssignment = async (req, res) => {
+  try {
+    const { assignment_id } = req.params;
+    const schoolId = req.user.school_id;
+    const { teacher_id, class_id, subject_id } = req.body;
+
+    // Verify assignment belongs to school
+    const [assignment] = await pool.query(
+      `SELECT ta.* FROM teaching_assignments ta
+       JOIN classes c ON ta.class_id = c.id
+       JOIN grades g ON c.grade_id = g.id
+       WHERE ta.id = ? AND g.school_id = ?`,
+      [assignment_id, schoolId]
+    );
+
+    if (assignment.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: { code: 'NOT_FOUND', message: 'Teaching assignment not found.' }
+      });
+    }
+
+    // Check for marks - block edit if marks exist (consistent with delete)
+    const [marks] = await pool.query(
+      'SELECT COUNT(*) as count FROM marks WHERE teaching_assignment_id = ?',
+      [assignment_id]
+    );
+
+    if (marks[0].count > 0) {
+      return res.status(409).json({
+        success: false,
+        data: null,
+        error: { code: 'CONFLICT', message: 'Cannot edit assignment. It has marks recorded.' }
+      });
+    }
+
+    const newTeacherId = teacher_id ?? assignment[0].teacher_id;
+    const newClassId = class_id ?? assignment[0].class_id;
+    const newSubjectId = subject_id ?? assignment[0].subject_id;
+
+    // Verify teacher belongs to school
+    const [teacher] = await pool.query(
+      'SELECT id FROM users WHERE id = ? AND school_id = ? AND role IN (?, ?)',
+      [newTeacherId, schoolId, 'teacher', 'class_head']
+    );
+    if (teacher.length === 0) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid teacher.' }
+      });
+    }
+
+    // Verify class belongs to school
+    const [cls] = await pool.query(
+      `SELECT c.id FROM classes c JOIN grades g ON c.grade_id = g.id WHERE c.id = ? AND g.school_id = ?`,
+      [newClassId, schoolId]
+    );
+    if (cls.length === 0) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid class.' }
+      });
+    }
+
+    // Verify subject belongs to school
+    const [subj] = await pool.query(
+      'SELECT id FROM subjects WHERE id = ? AND school_id = ? AND is_active = true',
+      [newSubjectId, schoolId]
+    );
+    if (subj.length === 0) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid or inactive subject.' }
+      });
+    }
+
+    // Check for duplicate assignment
+    const academicYearId = assignment[0].academic_year_id;
+    const [existing] = await pool.query(
+      `SELECT id FROM teaching_assignments 
+       WHERE teacher_id = ? AND class_id = ? AND subject_id = ? AND academic_year_id = ? AND id != ?`,
+      [newTeacherId, newClassId, newSubjectId, academicYearId, assignment_id]
+    );
+    if (existing.length > 0) {
+      return res.status(409).json({
+        success: false,
+        data: null,
+        error: { code: 'CONFLICT', message: 'Teaching assignment already exists for this combination.' }
+      });
+    }
+
+    await pool.query(
+      'UPDATE teaching_assignments SET teacher_id = ?, class_id = ?, subject_id = ? WHERE id = ?',
+      [newTeacherId, newClassId, newSubjectId, assignment_id]
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: { id: parseInt(assignment_id), teacher_id: newTeacherId, class_id: newClassId, subject_id: newSubjectId },
+      error: null
+    });
+  } catch (error) {
+    console.error('Update teaching assignment error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to update teaching assignment.' }
     });
   }
 };
@@ -2342,6 +2585,57 @@ const changeSchoolUserStatus = async (req, res, role, activate, notFoundMessage)
   }
 };
 
+const deleteSchoolUser = async (req, res, role, roleLabel) => {
+  try {
+    const schoolId = req.user.school_id;
+    const requesterId = req.user.id;
+    const { user_id } = req.params;
+
+    const [rows] = await pool.query(
+      'SELECT id, name FROM users WHERE id = ? AND school_id = ? AND role = ?',
+      [user_id, schoolId, role]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: { code: 'NOT_FOUND', message: `${roleLabel} not found.` }
+      });
+    }
+
+    if (parseInt(user_id, 10) === requesterId) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'You cannot delete your own account.' }
+      });
+    }
+
+    await pool.query(
+      'DELETE FROM users WHERE id = ? AND school_id = ? AND role = ?',
+      [user_id, schoolId, role]
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: parseInt(user_id, 10),
+        full_name: rows[0].name,
+        deleted: true,
+        deleted_at: new Date().toISOString()
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error(`Delete ${role} user error:`, error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: `Failed to delete ${role} user.` }
+    });
+  }
+};
+
 // Registrar endpoints
 const createRegistrar = async (req, res) => createSchoolUser(req, res, 'registrar');
 const listRegistrars = async (req, res) => listSchoolUsers(req, res, 'registrar');
@@ -2353,6 +2647,9 @@ const deactivateRegistrar = async (req, res) => {
 };
 const activateRegistrar = async (req, res) => {
   return changeSchoolUserStatus(req, res, 'registrar', true, 'Registrar not found or does not belong to this school.');
+};
+const deleteRegistrar = async (req, res) => {
+  return deleteSchoolUser(req, res, 'registrar', 'Registrar');
 };
 
 // Store house user endpoints
@@ -2367,6 +2664,62 @@ const deactivateStoreHouseUser = async (req, res) => {
 const activateStoreHouseUser = async (req, res) => {
   return changeSchoolUserStatus(req, res, 'store_house', true, 'Store house user not found or does not belong to this school.');
 };
+const deleteStoreHouseUser = async (req, res) => {
+  return deleteSchoolUser(req, res, 'store_house', 'Store house user');
+};
+
+const resetSchoolUserPassword = async (req, res, role, roleLabel) => {
+  try {
+    const schoolId = req.user.school_id;
+    const { user_id } = req.params;
+    const [rows] = await pool.query(
+      'SELECT id, name, username, role FROM users WHERE id = ? AND school_id = ? AND role = ?',
+      [user_id, schoolId, role]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: { code: 'NOT_FOUND', message: `${roleLabel} not found.` }
+      });
+    }
+    const target = rows[0];
+    const temp = generatePassword();
+    const hashed = await hashPassword(temp);
+    await pool.query(
+      'UPDATE users SET password = ?, must_change_password = true WHERE id = ?',
+      [hashed, user_id]
+    );
+    return res.status(200).json({
+      success: true,
+      data: {
+        user_id: target.id,
+        full_name: target.name,
+        username: target.username,
+        role: target.role,
+        new_temporary_password: temp,
+        must_change_password: true,
+        reset_at: new Date().toISOString()
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error(`Reset ${role} password error:`, error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'An error occurred while resetting password.' }
+    });
+  }
+};
+
+const resetRegistrarPassword = async (req, res) => {
+  return resetSchoolUserPassword(req, res, 'registrar', 'Registrar');
+};
+
+const resetStoreHouseUserPassword = async (req, res) => {
+  return resetSchoolUserPassword(req, res, 'store_house', 'Store house user');
+};
 
 module.exports = {
   // Grades
@@ -2378,21 +2731,21 @@ module.exports = {
   // Subjects (flat routes)
   listSubjects, createSubject, updateSubject, deleteSubject,
   // Subjects (nested under grades - API contract)
-  listSubjectsByGrade, addSubjectToGrade, updateSubjectInGrade, removeSubjectFromGrade,
+  listSubjectsByGrade, addSubjectToGrade, updateSubjectInGrade, removeSubjectFromGrade, deactivateSubjectInGrade, activateSubjectInGrade,
   // Assessment Types
   listAssessmentTypes, createAssessmentType, updateAssessmentType, deleteAssessmentType,
   // Weight Templates
   listWeightTemplates, getWeightTemplate, createWeightTemplate, updateWeightTemplate, deleteWeightTemplate,
   // Teaching Assignments
-  listTeachingAssignments, createTeachingAssignment, deleteTeachingAssignment,
+  listTeachingAssignments, createTeachingAssignment, updateTeachingAssignment, deleteTeachingAssignment,
   // Teachers
   listTeachers,
   // Class Head
   assignClassHead, removeClassHead,
   // Registrars
-  createRegistrar, listRegistrars, updateRegistrar, deactivateRegistrar, activateRegistrar,
+  createRegistrar, listRegistrars, updateRegistrar, deactivateRegistrar, activateRegistrar, deleteRegistrar, resetRegistrarPassword,
   // Store House Users
-  createStoreHouseUser, listStoreHouseUsers, updateStoreHouseUser, deactivateStoreHouseUser, activateStoreHouseUser
+  createStoreHouseUser, listStoreHouseUsers, updateStoreHouseUser, deactivateStoreHouseUser, activateStoreHouseUser, deleteStoreHouseUser, resetStoreHouseUserPassword
 };
 
 

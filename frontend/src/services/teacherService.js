@@ -58,6 +58,24 @@ export const setAssessmentWeights = async (data) => {
   return response.data;
 };
 
+/**
+ * Create assessment type from teacher assessment setup page
+ * @param {Object} data - { name }
+ */
+export const createTeacherAssessmentType = async (data) => {
+  const response = await api.post('/teacher/assessment-types', data);
+  return response.data;
+};
+
+/**
+ * Delete assessment type from teacher assessment setup page
+ * @param {number} assessmentTypeId
+ */
+export const deleteTeacherAssessmentType = async (assessmentTypeId) => {
+  const response = await api.delete(`/teacher/assessment-types/${assessmentTypeId}`);
+  return response.data;
+};
+
 // ============================================================
 // STUDENT LIST
 // ============================================================
@@ -176,6 +194,8 @@ export default {
   getWeightSuggestions,
   getAssessmentWeights,
   setAssessmentWeights,
+  createTeacherAssessmentType,
+  deleteTeacherAssessmentType,
   getClassStudents,
   listStudentGrades,
   enterGrade,

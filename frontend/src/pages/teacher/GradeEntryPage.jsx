@@ -113,9 +113,19 @@ const GradeEntryPage = () => {
 
   // Handle score change in the grid
   const handleScoreChange = (studentId, assessmentTypeId, value) => {
+    const at = assessmentTypes.find(a => a.id === assessmentTypeId);
+    const max = at?.max_score ?? 0;
+    let nextValue = value;
+    if (value !== '') {
+      const numeric = parseFloat(value);
+      if (!Number.isNaN(numeric)) {
+        if (numeric < 0) nextValue = '0';
+        else if (numeric > max) nextValue = String(max);
+      }
+    }
     setEditedScores(prev => ({
       ...prev,
-      [`${studentId}-${assessmentTypeId}`]: value
+      [`${studentId}-${assessmentTypeId}`]: nextValue
     }));
     setSuccess(null);
   };
@@ -164,21 +174,28 @@ const GradeEntryPage = () => {
       for (const [key, value] of Object.entries(editedScores)) {
         if (value === '' || value === null || value === undefined) continue;
         const [studentId, assessmentTypeId] = key.split('-');
+        const assessmentType = assessmentTypes.find(a => a.id === parseInt(assessmentTypeId));
+        if (!assessmentType) continue;
+        const numericScore = parseFloat(value);
+        if (Number.isNaN(numericScore) || numericScore < 0 || numericScore > (assessmentType.max_score || 0)) {
+          setError(`Invalid score for ${assessmentType.name}. Allowed range: 0 to ${assessmentType.max_score}.`);
+          setSaving(false);
+          return;
+        }
         if (!gradesByType[assessmentTypeId]) {
           gradesByType[assessmentTypeId] = [];
         }
 
         const student = gradeData?.items?.find(s => s.student_id === parseInt(studentId));
         const existingGradeId = getGradeId(student, parseInt(assessmentTypeId));
-        const assessmentType = assessmentTypes.find(a => a.id === parseInt(assessmentTypeId));
 
         if (existingGradeId) {
           // Update existing grade
-          await updateGrade(existingGradeId, { score: parseFloat(value) });
+          await updateGrade(existingGradeId, { score: numericScore });
         } else {
           gradesByType[assessmentTypeId].push({
             student_id: parseInt(studentId),
-            score: parseFloat(value)
+            score: numericScore
           });
         }
       }

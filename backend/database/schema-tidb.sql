@@ -135,6 +135,7 @@ CREATE TABLE subjects (
     id INT PRIMARY KEY AUTO_INCREMENT,
     school_id INT NOT NULL,
     name VARCHAR(100) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
 
     FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE,
     UNIQUE KEY unique_subject_per_school (school_id, name)

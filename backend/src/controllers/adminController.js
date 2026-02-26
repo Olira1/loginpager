@@ -3,7 +3,7 @@
 
 const { pool } = require('../config/db');
 const bcrypt = require('bcryptjs');
-const { validatePasswordStrength } = require('../utils/passwordGenerator');
+const { validatePasswordStrength, generatePassword, hashPassword } = require('../utils/passwordGenerator');
 
 // ==========================================
 // SCHOOL MANAGEMENT
@@ -348,13 +348,15 @@ const updateSchool = async (req, res) => {
  * Delete school (soft delete by setting status to inactive)
  */
 const deleteSchool = async (req, res) => {
+  let connection;
   try {
     const { school_id } = req.params;
+    const schoolId = Number(school_id);
 
     // Check if school exists
     const [existing] = await pool.query(
       'SELECT * FROM schools WHERE id = ?',
-      [school_id]
+      [schoolId]
     );
 
     if (existing.length === 0) {
@@ -368,34 +370,34 @@ const deleteSchool = async (req, res) => {
       });
     }
 
-    // Check if school has active users
-    const [activeUsers] = await pool.query(
-      'SELECT COUNT(*) as total FROM users WHERE school_id = ? AND is_active = true',
-      [school_id]
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    const [[userCount]] = await connection.query(
+      'SELECT COUNT(*) as total FROM users WHERE school_id = ?',
+      [schoolId]
     );
 
-    if (activeUsers[0].total > 0) {
-      return res.status(409).json({
-        success: false,
-        data: null,
-        error: {
-          code: 'CONFLICT',
-          message: 'School has active users and cannot be deleted. Deactivate the school instead.'
-        }
-      });
-    }
+    // Delete all users in this school first; dependent rows (students/teachers/etc.) cascade.
+    await connection.query('DELETE FROM users WHERE school_id = ?', [schoolId]);
 
-    // Delete school
-    await pool.query('DELETE FROM schools WHERE id = ?', [school_id]);
+    // Delete school row after related users are removed.
+    await connection.query('DELETE FROM schools WHERE id = ?', [schoolId]);
+
+    await connection.commit();
 
     return res.status(200).json({
       success: true,
       data: {
-        message: 'School deleted successfully.'
+        school_id: schoolId,
+        school_name: existing[0].name,
+        deleted_users: userCount.total,
+        message: 'School and related data deleted successfully.'
       },
       error: null
     });
   } catch (error) {
+    if (connection) await connection.rollback();
     console.error('Delete school error:', error);
     return res.status(500).json({
       success: false,
@@ -405,6 +407,8 @@ const deleteSchool = async (req, res) => {
         message: 'An error occurred while deleting school.'
       }
     });
+  } finally {
+    if (connection) connection.release();
   }
 };
 
@@ -1240,6 +1244,54 @@ const activateSchoolHead = async (req, res) => {
   }
 };
 
+/**
+ * POST /api/v1/admin/school-heads/:user_id/reset-password
+ * Reset school head password (admin only)
+ */
+const resetSchoolHeadPassword = async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    const [rows] = await pool.query(
+      'SELECT id, name, username, role FROM users WHERE id = ? AND role = ?',
+      [user_id, 'school_head']
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: { code: 'NOT_FOUND', message: 'School head not found.' }
+      });
+    }
+    const target = rows[0];
+    const temp = generatePassword();
+    const hashed = await hashPassword(temp);
+    await pool.query(
+      'UPDATE users SET password = ?, must_change_password = true WHERE id = ?',
+      [hashed, user_id]
+    );
+    return res.status(200).json({
+      success: true,
+      data: {
+        user_id: target.id,
+        full_name: target.name,
+        username: target.username,
+        role: target.role,
+        new_temporary_password: temp,
+        must_change_password: true,
+        reset_at: new Date().toISOString()
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error('Reset school head password error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'An error occurred while resetting password.' }
+    });
+  }
+};
+
 // ==========================================
 // PROMOTION CRITERIA MANAGEMENT
 // ==========================================
@@ -1603,6 +1655,87 @@ const getStatistics = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/v1/admin/statistics/schools/:school_id
+ * Get statistics for a specific school
+ */
+const getSchoolStatistics = async (req, res) => {
+  try {
+    const { school_id } = req.params;
+
+    const [schoolRows] = await pool.query(
+      'SELECT id, name, status FROM schools WHERE id = ?',
+      [school_id]
+    );
+    if (schoolRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'School not found.'
+        }
+      });
+    }
+
+    const [[studentRow]] = await pool.query(
+      `SELECT COUNT(*) as total
+       FROM students s
+       JOIN classes c ON s.class_id = c.id
+       JOIN grades g ON c.grade_id = g.id
+       WHERE g.school_id = ?`,
+      [school_id]
+    );
+
+    const [[teacherRow]] = await pool.query(
+      `SELECT COUNT(*) as total
+       FROM users
+       WHERE school_id = ? AND role IN ('teacher', 'class_head')`,
+      [school_id]
+    );
+
+    const [[classRow]] = await pool.query(
+      `SELECT COUNT(*) as total
+       FROM classes c
+       JOIN grades g ON c.grade_id = g.id
+       WHERE g.school_id = ?`,
+      [school_id]
+    );
+
+    const totalStudents = Number(studentRow.total) || 0;
+    const totalTeachers = Number(teacherRow.total) || 0;
+    const totalClasses = Number(classRow.total) || 0;
+    const ratio =
+      totalTeachers > 0
+        ? `${(totalStudents / totalTeachers).toFixed(1)}:1`
+        : 'N/A';
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        school_id: Number(school_id),
+        school_name: schoolRows[0].name,
+        status: schoolRows[0].status,
+        total_students: totalStudents,
+        total_teachers: totalTeachers,
+        total_classes: totalClasses,
+        teacher_student_ratio: ratio
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error('Get school statistics error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'An error occurred while fetching school statistics.'
+      }
+    });
+  }
+};
+
 module.exports = {
   // Schools
   listSchools,
@@ -1619,6 +1752,7 @@ module.exports = {
   updateSchoolHead,
   deactivateSchoolHead,
   activateSchoolHead,
+  resetSchoolHeadPassword,
   // Promotion Criteria
   listPromotionCriteria,
   getPromotionCriteria,
@@ -1626,7 +1760,8 @@ module.exports = {
   updatePromotionCriteria,
   deletePromotionCriteria,
   // Statistics
-  getStatistics
+  getStatistics,
+  getSchoolStatistics
 };
 
 

@@ -139,6 +139,8 @@ const SchoolsStatusChart = ({ active, inactive, total }) => {
 
 // School Statistics Card
 const SchoolStatCard = ({ school, stats }) => {
+  const isLoading = typeof stats === 'undefined';
+
   return (
     <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
       <div className="flex items-center gap-3 mb-4">
@@ -166,9 +168,13 @@ const SchoolStatCard = ({ school, stats }) => {
             <p className="text-xs text-gray-500">Classes</p>
           </div>
         </div>
-      ) : (
+      ) : isLoading ? (
         <div className="flex items-center justify-center py-4">
           <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+        </div>
+      ) : (
+        <div className="py-4 text-sm text-gray-500 text-center">
+          Statistics unavailable
         </div>
       )}
 

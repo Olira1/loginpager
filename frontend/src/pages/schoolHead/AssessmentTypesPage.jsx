@@ -123,8 +123,6 @@ const WeightTemplateCard = ({ template, onEdit, onDelete }) => {
 const AssessmentTypeModal = ({ isOpen, mode, type, onClose, onSave }) => {
   const [formData, setFormData] = useState({
     name: '',
-    code: '',
-    description: '',
     default_weight_percent: 10
   });
   const [loading, setLoading] = useState(false);
@@ -134,12 +132,10 @@ const AssessmentTypeModal = ({ isOpen, mode, type, onClose, onSave }) => {
     if (type && mode === 'edit') {
       setFormData({
         name: type.name || '',
-        code: type.code || '',
-        description: type.description || '',
         default_weight_percent: type.default_weight_percent || 10
       });
     } else {
-      setFormData({ name: '', code: '', description: '', default_weight_percent: 10 });
+      setFormData({ name: '', default_weight_percent: 10 });
     }
     setError(null);
   }, [type, mode, isOpen]);
@@ -195,18 +191,6 @@ const AssessmentTypeModal = ({ isOpen, mode, type, onClose, onSave }) => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Code</label>
-            <input
-              type="text"
-              value={formData.code}
-              onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              placeholder="e.g., MID"
-              maxLength={10}
-            />
-          </div>
-
-          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Default Weight (%)</label>
             <input
               type="number"
@@ -215,17 +199,6 @@ const AssessmentTypeModal = ({ isOpen, mode, type, onClose, onSave }) => {
               min="1"
               max="100"
               className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Description</label>
-            <textarea
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              rows={2}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              placeholder="Optional description..."
             />
           </div>
 

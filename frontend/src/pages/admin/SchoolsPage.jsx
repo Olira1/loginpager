@@ -44,7 +44,6 @@ const SchoolCard = ({ school, onView, onEdit, onToggleStatus, onDelete }) => {
           </div>
           <div>
             <h3 className="font-semibold text-gray-900">{school.name}</h3>
-            <p className="text-sm text-gray-500">{school.code}</p>
           </div>
         </div>
         <span className={`px-2 py-1 text-xs font-medium rounded-full ${
@@ -59,6 +58,18 @@ const SchoolCard = ({ school, onView, onEdit, onToggleStatus, onDelete }) => {
       {/* Details */}
       <div className="space-y-2 mb-4">
         <p className="text-sm text-gray-600">{school.address || 'No address'}</p>
+        {school.school_head ? (
+          <div className="text-sm text-gray-500">
+            <p>
+              <span className="text-gray-400">Head:</span> {school.school_head.name || '-'}
+            </p>
+            <p>
+              <span className="text-gray-400">Phone:</span> {school.school_head.phone || '-'}
+            </p>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-400">No school head assigned</p>
+        )}
       </div>
 
       {/* Actions */}
@@ -87,6 +98,13 @@ const SchoolCard = ({ school, onView, onEdit, onToggleStatus, onDelete }) => {
         >
           {isActive ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
           {isActive ? 'Suspend' : 'Activate'}
+        </button>
+        <button
+          onClick={() => onDelete(school)}
+          className="flex items-center gap-1 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+        >
+          <Trash2 className="w-4 h-4" />
+          Delete
         </button>
       </div>
     </div>

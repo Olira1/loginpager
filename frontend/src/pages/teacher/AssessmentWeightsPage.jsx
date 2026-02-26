@@ -5,14 +5,16 @@
 import { useState, useEffect } from 'react';
 import {
   Settings, AlertCircle, RefreshCw, CheckCircle2, Info,
-  Save, RotateCcw, Lightbulb, ArrowRight
+  Save, RotateCcw, Lightbulb, ArrowRight, Plus, Trash2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
   getAssignedClasses,
   getAssessmentWeights,
   getWeightSuggestions,
-  setAssessmentWeights
+  setAssessmentWeights,
+  createTeacherAssessmentType,
+  deleteTeacherAssessmentType
 } from '../../services/teacherService';
 
 const AssessmentWeightsPage = () => {
@@ -36,6 +38,7 @@ const AssessmentWeightsPage = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const [newAssessmentTypeName, setNewAssessmentTypeName] = useState('');
 
   // Hardcoded semesters (from seed data)
   const semesters = [
@@ -130,6 +133,51 @@ const AssessmentWeightsPage = () => {
     updated[index] = { ...updated[index], weight_percent: parseFloat(value) || 0 };
     setWeights(updated);
     setSuccess(null);
+  };
+
+  const handleAddAssessmentType = async () => {
+    const name = newAssessmentTypeName.trim();
+    if (!name) {
+      setError('Assessment type name is required.');
+      return;
+    }
+    try {
+      setSaving(true);
+      setError(null);
+      setSuccess(null);
+      const response = await createTeacherAssessmentType({ name });
+      if (!response.success) {
+        setError(response.error?.message || 'Failed to add assessment type.');
+        return;
+      }
+      setNewAssessmentTypeName('');
+      await fetchWeights();
+      setSuccess('Assessment type added. Set its weight and save.');
+    } catch (err) {
+      setError(err.response?.data?.error?.message || 'Failed to add assessment type.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteAssessmentType = async (assessmentTypeId) => {
+    if (!window.confirm('Delete this assessment type? This cannot be undone.')) return;
+    try {
+      setSaving(true);
+      setError(null);
+      setSuccess(null);
+      const response = await deleteTeacherAssessmentType(assessmentTypeId);
+      if (!response.success) {
+        setError(response.error?.message || 'Failed to delete assessment type.');
+        return;
+      }
+      await fetchWeights();
+      setSuccess('Assessment type deleted successfully.');
+    } catch (err) {
+      setError(err.response?.data?.error?.message || 'Failed to delete assessment type.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Re-fetch the latest suggestions from the API (not cached) so school head edits are reflected
@@ -319,7 +367,29 @@ const AssessmentWeightsPage = () => {
 
           {/* Weight Categories */}
           <div className="bg-white border border-gray-200 rounded-xl p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Assessment Categories</h2>
+            <div className="flex flex-col md:flex-row md:items-end gap-3 mb-4">
+              <div className="flex-1">
+                <h2 className="text-lg font-semibold text-gray-900">Assessment Categories</h2>
+                <p className="text-xs text-gray-500 mt-1">Teachers can add/remove assessment types and tune weights.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={newAssessmentTypeName}
+                  onChange={(e) => setNewAssessmentTypeName(e.target.value)}
+                  placeholder="New assessment type (e.g., Oral)"
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-64"
+                />
+                <button
+                  onClick={handleAddAssessmentType}
+                  disabled={saving}
+                  className="inline-flex items-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add
+                </button>
+              </div>
+            </div>
             {weights.length === 0 ? (
               <div className="text-center py-8 text-gray-400">
                 <Settings className="w-10 h-10 mx-auto mb-3" />
@@ -334,6 +404,14 @@ const AssessmentWeightsPage = () => {
                         <Settings className="w-4 h-4 text-gray-400" />
                         {w.name}
                       </h3>
+                      <button
+                        onClick={() => handleDeleteAssessmentType(w.assessment_type_id)}
+                        disabled={saving}
+                        className="p-1.5 rounded text-red-600 hover:bg-red-50 disabled:opacity-50"
+                        title="Delete assessment type"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                     <div className="flex items-center gap-4">
                       <span className="text-sm text-gray-500 w-20">Weight (%):</span>
