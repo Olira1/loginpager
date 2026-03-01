@@ -490,10 +490,10 @@ const CompilePublishPage = () => {
                 <table className="w-full">
                   <thead>
                     <tr className="bg-gray-700 text-white">
-                      <th className="px-6 py-3 text-left text-sm font-semibold" style={{ width: '45%' }}>Gosa Barnootaa</th>
-                      <th className="px-4 py-3 text-center text-sm font-semibold" style={{ width: '18%' }}>Sem. 1ffaa</th>
-                      <th className="px-4 py-3 text-center text-sm font-semibold" style={{ width: '18%' }}>Sem. 2ffaa</th>
-                      <th className="px-4 py-3 text-center text-sm font-semibold" style={{ width: '19%' }}>Avreejii</th>
+                      <th className="px-6 py-3 text-left text-sm font-semibold" style={{ width: '45%' }}>Subject Type</th>
+                      <th className="px-4 py-3 text-center text-sm font-semibold" style={{ width: '18%' }}>Sem. 1</th>
+                      <th className="px-4 py-3 text-center text-sm font-semibold" style={{ width: '18%' }}>Sem. 2</th>
+                      <th className="px-4 py-3 text-center text-sm font-semibold" style={{ width: '19%' }}>Average</th>
                     </tr>
                   </thead>
                   <tbody>

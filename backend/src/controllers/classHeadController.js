@@ -16,6 +16,52 @@ const getClassHeadClass = async (userId) => {
   return classes.length > 0 ? classes[0] : null;
 };
 
+// Resolve a student's class/grade context for a requested academic year.
+// Falls back to current student snapshot for backward compatibility.
+const resolveStudentClassForYear = async (studentId, academicYearId = null) => {
+  if (academicYearId) {
+    const [rows] = await pool.query(
+      `SELECT se.class_id, c.name as class_name, g.id as grade_id, g.name as grade_name
+       FROM student_enrollments se
+       JOIN classes c ON c.id = se.class_id
+       JOIN grades g ON g.id = se.grade_id
+       WHERE se.student_id = ? AND se.academic_year_id = ?
+       ORDER BY se.id DESC
+       LIMIT 1`,
+      [studentId, academicYearId]
+    );
+
+    if (rows.length > 0) {
+      return {
+        class_id: rows[0].class_id,
+        class_name: rows[0].class_name,
+        grade_id: rows[0].grade_id,
+        grade_name: rows[0].grade_name,
+        source: 'enrollment'
+      };
+    }
+  }
+
+  const [fallback] = await pool.query(
+    `SELECT s.class_id, c.name as class_name, g.id as grade_id, g.name as grade_name
+     FROM students s
+     JOIN classes c ON c.id = s.class_id
+     JOIN grades g ON g.id = c.grade_id
+     WHERE s.id = ?
+     LIMIT 1`,
+    [studentId]
+  );
+  if (fallback.length === 0) return null;
+
+  return {
+    class_id: fallback[0].class_id,
+    class_name: fallback[0].class_name,
+    grade_id: fallback[0].grade_id,
+    grade_name: fallback[0].grade_name,
+    source: 'current_student'
+  };
+};
+
 // Helper to determine promotion remark based on average
 const getPromotionRemark = (average, passingAverage = 50) => {
   return average >= passingAverage ? 'Promoted' : 'Not Promoted';
@@ -853,6 +899,74 @@ const publishYearResults = async (req, res) => {
   }
 };
 
+/**
+ * POST /api/v1/class-head/lock/semester
+ * Lock semester lifecycle after publication/finalization
+ */
+const lockSemesterResults = async (req, res) => {
+  try {
+    const { semester_id, academic_year_id, reason = null } = req.body;
+    const classInfo = await getClassHeadClass(req.user.id);
+
+    if (!classInfo) {
+      return res.status(403).json({
+        success: false,
+        data: null,
+        error: { code: 'FORBIDDEN', message: 'You are not assigned as class head.' }
+      });
+    }
+    if (!semester_id || !academic_year_id) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'semester_id and academic_year_id are required.' }
+      });
+    }
+
+    const [semesterRows] = await pool.query(
+      'SELECT id, academic_year_id, lifecycle_status FROM semesters WHERE id = ?',
+      [semester_id]
+    );
+    if (semesterRows.length === 0 || Number(semesterRows[0].academic_year_id) !== Number(academic_year_id)) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: { code: 'NOT_FOUND', message: 'Semester not found in the provided academic year.' }
+      });
+    }
+
+    await pool.query(
+      `UPDATE semesters
+       SET lifecycle_status = 'locked',
+           locked_at = CURRENT_TIMESTAMP,
+           locked_by = ?,
+           lock_reason = ?
+       WHERE id = ?`,
+      [req.user.id, reason, semester_id]
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        semester_id: Number(semester_id),
+        academic_year_id: Number(academic_year_id),
+        lifecycle_status: 'locked',
+        locked_at: new Date().toISOString(),
+        locked_by: req.user.id,
+        reason
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error('Lock semester results error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to lock semester results.' }
+    });
+  }
+};
+
 // ==========================================
 // SEND ROSTER TO STORE HOUSE
 // ==========================================
@@ -997,13 +1111,30 @@ const getStudentReport = async (req, res) => {
       });
     }
 
-    // Verify student is in this class
+    const studentClassContext = await resolveStudentClassForYear(student_id, academic_year_id);
+    if (!studentClassContext) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: { code: 'NOT_FOUND', message: 'Student not found.' }
+      });
+    }
+
+    // Verify student is in this class (year-aware with fallback)
+    if (Number(studentClassContext.class_id) !== Number(classInfo.id)) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: { code: 'NOT_FOUND', message: 'Student not found in your class.' }
+      });
+    }
+
     const [studentData] = await pool.query(
       `SELECT s.id, s.student_id_number as code, u.name, s.sex as gender
        FROM students s
        JOIN users u ON s.user_id = u.id
-       WHERE s.id = ? AND s.class_id = ?`,
-      [student_id, classInfo.id]
+       WHERE s.id = ?`,
+      [student_id]
     );
 
     if (studentData.length === 0) {
@@ -1089,8 +1220,8 @@ const getStudentReport = async (req, res) => {
           code: student.code,
           name: student.name,
           gender: student.gender,
-          class_name: classInfo.name,
-          grade_name: classInfo.grade_name
+          class_name: studentClassContext.class_name,
+          grade_name: studentClassContext.grade_name
         },
         report_type: type,
         semester: semesterInfo[0]?.name,
@@ -1129,6 +1260,7 @@ module.exports = {
   getClassSnapshot,
   publishSemesterResults,
   publishYearResults,
+  lockSemesterResults,
   sendRosterToStoreHouse,
   getStudentReport
 };

@@ -30,6 +30,7 @@ router.post('/submissions/:submission_id/reject', classHeadController.rejectSubm
 router.post('/compile-grades', classHeadController.compileGrades);
 router.post('/publish/semester', classHeadController.publishSemesterResults);
 router.post('/publish/year', classHeadController.publishYearResults);
+router.post('/lock/semester', classHeadController.lockSemesterResults);
 
 // ==========================================
 // REPORTS

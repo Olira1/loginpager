@@ -1644,6 +1644,451 @@ const getStatistics = async (req, res) => {
   }
 };
 
+const buildPromotionDecision = (gradeLevel, yearAverage, passingAverage) => {
+  if (yearAverage >= passingAverage) {
+    if (Number(gradeLevel) >= 12) return 'graduated';
+    return 'promoted';
+  }
+  return 'repeated';
+};
+
+const previewPromotions = async (req, res) => {
+  try {
+    const schoolId = req.user.school_id;
+    const {
+      from_academic_year_id,
+      to_academic_year_id,
+      source_grade_level,
+      source_class_ids = [],
+      default_target_class_id = null,
+      promotion_criteria_id = null
+    } = req.body || {};
+
+    if (!from_academic_year_id || !to_academic_year_id) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'from_academic_year_id and to_academic_year_id are required.' }
+      });
+    }
+
+    const [criteriaRows] = promotion_criteria_id
+      ? await pool.query('SELECT id, passing_average FROM promotion_criteria WHERE id = ?', [promotion_criteria_id])
+      : [[]];
+    if (promotion_criteria_id && criteriaRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: { code: 'NOT_FOUND', message: 'Promotion criteria not found.' }
+      });
+    }
+    const passingAverage = Number(criteriaRows[0]?.passing_average ?? 50);
+
+    let classFilter = '';
+    const params = [schoolId, from_academic_year_id];
+    if (source_grade_level !== undefined && source_grade_level !== null) {
+      classFilter += ' AND g.level = ?';
+      params.push(source_grade_level);
+    }
+    if (Array.isArray(source_class_ids) && source_class_ids.length > 0) {
+      const placeholders = source_class_ids.map(() => '?').join(', ');
+      classFilter += ` AND se.class_id IN (${placeholders})`;
+      params.push(...source_class_ids);
+    }
+
+    const [rows] = await pool.query(
+      `SELECT se.id as enrollment_id, se.student_id, se.class_id, g.level as grade_level,
+              u.name as student_name,
+              COALESCE(AVG(ssr.average_score), 0) as year_average
+       FROM student_enrollments se
+       JOIN students s ON s.id = se.student_id
+       JOIN users u ON u.id = s.user_id
+       JOIN classes c ON c.id = se.class_id
+       JOIN grades g ON g.id = se.grade_id
+       LEFT JOIN semesters sem ON sem.academic_year_id = se.academic_year_id
+       LEFT JOIN student_semester_results ssr ON ssr.student_id = se.student_id AND ssr.semester_id = sem.id
+       WHERE g.school_id = ?
+         AND se.academic_year_id = ?
+         ${classFilter}
+       GROUP BY se.id, se.student_id, se.class_id, g.level, u.name
+       ORDER BY u.name ASC`,
+      params
+    );
+
+    let promoted = 0;
+    let repeated = 0;
+    let graduated = 0;
+    const conflicts = [];
+    for (const row of rows) {
+      const decision = buildPromotionDecision(row.grade_level, Number(row.year_average) || 0, passingAverage);
+      if (decision === 'promoted') promoted += 1;
+      else if (decision === 'repeated') repeated += 1;
+      else if (decision === 'graduated') graduated += 1;
+
+      if (decision !== 'graduated' && !default_target_class_id) {
+        conflicts.push({
+          student_id: row.student_id,
+          code: 'TARGET_CLASS_NOT_SET',
+          message: `No target class configured for ${row.student_name}.`
+        });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        from_academic_year_id: Number(from_academic_year_id),
+        to_academic_year_id: Number(to_academic_year_id),
+        promotion_criteria_id: promotion_criteria_id ? Number(promotion_criteria_id) : null,
+        passing_average: passingAverage,
+        eligible: rows.length,
+        promoted,
+        repeated,
+        graduated,
+        conflicts
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error('Preview promotions error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'An error occurred while previewing promotions.' }
+    });
+  }
+};
+
+const commitPromotions = async (req, res) => {
+  let connection;
+  try {
+    const schoolId = req.user.school_id;
+    const {
+      from_academic_year_id,
+      to_academic_year_id,
+      class_mappings = [],
+      promotion_criteria_id = null
+    } = req.body || {};
+
+    if (!from_academic_year_id || !to_academic_year_id) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'from_academic_year_id and to_academic_year_id are required.' }
+      });
+    }
+
+    const [criteriaRows] = promotion_criteria_id
+      ? await pool.query('SELECT id, passing_average FROM promotion_criteria WHERE id = ?', [promotion_criteria_id])
+      : [[]];
+    if (promotion_criteria_id && criteriaRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: { code: 'NOT_FOUND', message: 'Promotion criteria not found.' }
+      });
+    }
+    const passingAverage = Number(criteriaRows[0]?.passing_average ?? 50);
+
+    const classMapping = new Map();
+    for (const item of class_mappings) {
+      if (item?.from_class_id && item?.to_class_id) {
+        classMapping.set(Number(item.from_class_id), Number(item.to_class_id));
+      }
+    }
+
+    const [rows] = await pool.query(
+      `SELECT se.id as enrollment_id, se.student_id, se.class_id, g.level as grade_level,
+              COALESCE(AVG(ssr.average_score), 0) as year_average
+       FROM student_enrollments se
+       JOIN students s ON s.id = se.student_id
+       JOIN classes c ON c.id = se.class_id
+       JOIN grades g ON g.id = se.grade_id
+       LEFT JOIN semesters sem ON sem.academic_year_id = se.academic_year_id
+       LEFT JOIN student_semester_results ssr ON ssr.student_id = se.student_id AND ssr.semester_id = sem.id
+       WHERE g.school_id = ? AND se.academic_year_id = ?
+       GROUP BY se.id, se.student_id, se.class_id, g.level`,
+      [schoolId, from_academic_year_id]
+    );
+
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    const batchCode = `promo-${Date.now()}`;
+    const [batchInserted] = await connection.query(
+      `INSERT INTO promotion_batches
+       (batch_code, school_id, from_academic_year_id, to_academic_year_id, promotion_criteria_id, status, created_by)
+       VALUES (?, ?, ?, ?, ?, 'committed', ?)`,
+      [batchCode, schoolId, from_academic_year_id, to_academic_year_id, promotion_criteria_id, req.user.id]
+    );
+    const batchId = batchInserted.insertId;
+
+    let promoted = 0;
+    let repeated = 0;
+    let graduated = 0;
+    let failed = 0;
+
+    for (const row of rows) {
+      const decision = buildPromotionDecision(row.grade_level, Number(row.year_average) || 0, passingAverage);
+      let toClassId = null;
+      let toGradeLevel = null;
+      let itemStatus = 'applied';
+      let errorMessage = null;
+      let toEnrollmentId = null;
+
+      if (decision === 'promoted') {
+        toClassId = classMapping.get(Number(row.class_id)) || null;
+        if (!toClassId) {
+          itemStatus = 'failed';
+          errorMessage = 'Target class mapping not found.';
+          failed += 1;
+        }
+      }
+
+      if (decision === 'repeated') {
+        toClassId = classMapping.get(Number(row.class_id)) || Number(row.class_id);
+      }
+
+      if (itemStatus === 'applied') {
+        await connection.query(
+          `UPDATE student_enrollments
+           SET is_current = FALSE, ended_at = CURDATE(), status = ?
+           WHERE id = ?`,
+          [decision, row.enrollment_id]
+        );
+
+        if (decision !== 'graduated') {
+          const [classRows] = await connection.query(
+            `SELECT c.id, g.id as grade_id, g.level
+             FROM classes c
+             JOIN grades g ON g.id = c.grade_id
+             WHERE c.id = ? AND c.academic_year_id = ?`,
+            [toClassId, to_academic_year_id]
+          );
+
+          if (classRows.length === 0) {
+            itemStatus = 'failed';
+            errorMessage = 'Target class is not in target academic year.';
+            failed += 1;
+            await connection.query(
+              `UPDATE student_enrollments
+               SET is_current = TRUE, ended_at = NULL, status = 'active'
+               WHERE id = ?`,
+              [row.enrollment_id]
+            );
+          } else {
+            toGradeLevel = classRows[0].level;
+            const [newEnrollment] = await connection.query(
+              `INSERT INTO student_enrollments
+               (student_id, academic_year_id, grade_id, class_id, status, entry_reason, is_current, started_at, created_by)
+               VALUES (?, ?, ?, ?, 'active', 'promotion', TRUE, CURDATE(), ?)`,
+              [row.student_id, to_academic_year_id, classRows[0].grade_id, classRows[0].id, req.user.id]
+            );
+            toEnrollmentId = newEnrollment.insertId;
+          }
+        }
+      }
+
+      if (decision === 'promoted' && itemStatus === 'applied') promoted += 1;
+      if (decision === 'repeated' && itemStatus === 'applied') repeated += 1;
+      if (decision === 'graduated' && itemStatus === 'applied') graduated += 1;
+
+      await connection.query(
+        `INSERT INTO promotion_batch_items
+         (batch_id, student_id, from_enrollment_id, to_enrollment_id, decision, from_grade_level, to_grade_level, from_class_id, to_class_id, item_status, error_message)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          batchId,
+          row.student_id,
+          row.enrollment_id,
+          toEnrollmentId,
+          decision,
+          row.grade_level,
+          toGradeLevel,
+          row.class_id,
+          toClassId,
+          itemStatus,
+          errorMessage
+        ]
+      );
+    }
+
+    await connection.query(
+      `UPDATE promotion_batches
+       SET committed_at = CURRENT_TIMESTAMP,
+           summary_json = JSON_OBJECT('processed', ?, 'promoted', ?, 'repeated', ?, 'graduated', ?, 'failed', ?)
+       WHERE id = ?`,
+      [rows.length, promoted, repeated, graduated, failed, batchId]
+    );
+
+    await connection.commit();
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        batch_id: batchId,
+        batch_code: batchCode,
+        processed: rows.length,
+        promoted,
+        repeated,
+        graduated,
+        failed,
+        committed_at: new Date().toISOString()
+      },
+      error: null
+    });
+  } catch (error) {
+    if (connection) await connection.rollback();
+    console.error('Commit promotions error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'An error occurred while committing promotions.' }
+    });
+  } finally {
+    if (connection) connection.release();
+  }
+};
+
+const listStudentEnrollments = async (req, res) => {
+  try {
+    const schoolId = req.user.school_id;
+    const { student_id } = req.params;
+
+    const [ownership] = await pool.query(
+      `SELECT s.id
+       FROM students s
+       JOIN users u ON u.id = s.user_id
+       WHERE s.id = ? AND u.school_id = ?`,
+      [student_id, schoolId]
+    );
+    if (ownership.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: { code: 'NOT_FOUND', message: 'Student not found.' }
+      });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT se.id, se.student_id, se.academic_year_id, ay.name as academic_year_name,
+              se.grade_id, g.level as grade_level, g.name as grade_name,
+              se.class_id, c.name as class_name,
+              se.status, se.entry_reason, se.is_current, se.started_at, se.ended_at, se.created_at
+       FROM student_enrollments se
+       JOIN academic_years ay ON ay.id = se.academic_year_id
+       JOIN grades g ON g.id = se.grade_id
+       JOIN classes c ON c.id = se.class_id
+       WHERE se.student_id = ?
+       ORDER BY ay.start_date DESC, se.id DESC`,
+      [student_id]
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        student_id: Number(student_id),
+        items: rows
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error('List student enrollments error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'An error occurred while fetching student enrollments.' }
+    });
+  }
+};
+
+const listRegistrationBatches = async (req, res) => {
+  try {
+    const schoolId = req.user.school_id;
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 20;
+    const offset = (page - 1) * limit;
+
+    const [countRows] = await pool.query(
+      'SELECT COUNT(*) as total FROM registration_batches WHERE school_id = ?',
+      [schoolId]
+    );
+    const [rows] = await pool.query(
+      `SELECT id, batch_code, batch_type, source_file_name, total_rows, successful_rows, failed_rows, created_at
+       FROM registration_batches
+       WHERE school_id = ?
+       ORDER BY created_at DESC
+       LIMIT ? OFFSET ?`,
+      [schoolId, limit, offset]
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        items: rows,
+        pagination: {
+          page,
+          limit,
+          total_items: countRows[0].total,
+          total_pages: Math.ceil(countRows[0].total / limit)
+        }
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error('List registration batches error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'An error occurred while fetching registration batches.' }
+    });
+  }
+};
+
+const getRegistrationBatch = async (req, res) => {
+  try {
+    const schoolId = req.user.school_id;
+    const { batch_id } = req.params;
+    const [rows] = await pool.query(
+      `SELECT id, batch_code, school_id, batch_type, source_file_name, total_rows, successful_rows, failed_rows, summary_json, created_at
+       FROM registration_batches
+       WHERE id = ? AND school_id = ?`,
+      [batch_id, schoolId]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: { code: 'NOT_FOUND', message: 'Registration batch not found.' }
+      });
+    }
+
+    const [rowItems] = await pool.query(
+      `SELECT id, batch_id, \`row_number\` as row_number, entity_type, entity_id, status, error_code, error_message, row_data_json, created_at
+       FROM registration_batch_rows
+       WHERE batch_id = ?
+       ORDER BY \`row_number\` ASC, id ASC`,
+      [batch_id]
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        ...rows[0],
+        rows: rowItems
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error('Get registration batch error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'An error occurred while fetching registration batch details.' }
+    });
+  }
+};
+
 module.exports = {
   createStudent,
   listStudents,
@@ -1665,6 +2110,11 @@ module.exports = {
   listParents,
   getParent,
   updateParent,
+  previewPromotions,
+  commitPromotions,
+  listStudentEnrollments,
+  listRegistrationBatches,
+  getRegistrationBatch,
   getRegistrationMetadata,
   getStatistics
 };

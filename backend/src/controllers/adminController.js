@@ -1736,6 +1736,290 @@ const getSchoolStatistics = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/v1/admin/academic-years
+ * List academic years with lifecycle metadata
+ */
+const listAcademicYears = async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, name, start_date, end_date, is_current, lifecycle_status,
+              locked_at, locked_by, lock_reason, reopened_at, reopened_by, reopen_reason, created_at
+       FROM academic_years
+       ORDER BY start_date DESC, id DESC`
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: { items: rows },
+      error: null
+    });
+  } catch (error) {
+    console.error('List academic years error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'An error occurred while fetching academic years.' }
+    });
+  }
+};
+
+/**
+ * POST /api/v1/admin/academic-years
+ * Create an academic year with lifecycle status
+ */
+const createAcademicYear = async (req, res) => {
+  let connection;
+  try {
+    const { name, start_date, end_date, set_as_current = false } = req.body;
+    if (!name || !start_date || !end_date) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'name, start_date, and end_date are required.' }
+      });
+    }
+
+    const [existing] = await pool.query('SELECT id FROM academic_years WHERE name = ? LIMIT 1', [name]);
+    if (existing.length > 0) {
+      return res.status(409).json({
+        success: false,
+        data: null,
+        error: { code: 'CONFLICT', message: 'Academic year name already exists.' }
+      });
+    }
+
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    const lifecycleStatus = set_as_current ? 'active' : 'planned';
+    const [inserted] = await connection.query(
+      `INSERT INTO academic_years (name, start_date, end_date, is_current, lifecycle_status)
+       VALUES (?, ?, ?, ?, ?)`,
+      [name, start_date, end_date, !!set_as_current, lifecycleStatus]
+    );
+
+    if (set_as_current) {
+      await connection.query(
+        `UPDATE academic_years
+         SET is_current = FALSE,
+             lifecycle_status = CASE WHEN lifecycle_status = 'active' THEN 'planned' ELSE lifecycle_status END
+         WHERE id != ?`,
+        [inserted.insertId]
+      );
+    }
+
+    await connection.commit();
+    const [createdRows] = await pool.query(
+      `SELECT id, name, start_date, end_date, is_current, lifecycle_status, created_at
+       FROM academic_years
+       WHERE id = ?`,
+      [inserted.insertId]
+    );
+
+    return res.status(201).json({
+      success: true,
+      data: createdRows[0],
+      error: null
+    });
+  } catch (error) {
+    if (connection) await connection.rollback();
+    console.error('Create academic year error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'An error occurred while creating academic year.' }
+    });
+  } finally {
+    if (connection) connection.release();
+  }
+};
+
+/**
+ * POST /api/v1/admin/academic-years/:academic_year_id/activate
+ * Activate target academic year and mark as current
+ */
+const activateAcademicYear = async (req, res) => {
+  let connection;
+  try {
+    const { academic_year_id } = req.params;
+    const [years] = await pool.query('SELECT * FROM academic_years WHERE id = ?', [academic_year_id]);
+    if (years.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: { code: 'NOT_FOUND', message: 'Academic year not found.' }
+      });
+    }
+    if (years[0].lifecycle_status === 'locked') {
+      return res.status(409).json({
+        success: false,
+        data: null,
+        error: { code: 'LIFECYCLE_LOCKED', message: 'Locked academic year cannot be activated.' }
+      });
+    }
+
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    await connection.query(
+      `UPDATE academic_years
+       SET is_current = FALSE,
+           lifecycle_status = CASE WHEN lifecycle_status = 'active' THEN 'planned' ELSE lifecycle_status END
+       WHERE id != ?`,
+      [academic_year_id]
+    );
+
+    await connection.query(
+      `UPDATE academic_years
+       SET is_current = TRUE, lifecycle_status = 'active'
+       WHERE id = ?`,
+      [academic_year_id]
+    );
+
+    await connection.commit();
+
+    const [updated] = await pool.query(
+      `SELECT id, name, start_date, end_date, is_current, lifecycle_status
+       FROM academic_years WHERE id = ?`,
+      [academic_year_id]
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: updated[0].id,
+        name: updated[0].name,
+        is_current: !!updated[0].is_current,
+        lifecycle_status: updated[0].lifecycle_status,
+        activated_at: new Date().toISOString()
+      },
+      error: null
+    });
+  } catch (error) {
+    if (connection) await connection.rollback();
+    console.error('Activate academic year error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'An error occurred while activating academic year.' }
+    });
+  } finally {
+    if (connection) connection.release();
+  }
+};
+
+/**
+ * POST /api/v1/admin/academic-years/:academic_year_id/lock
+ * Lock academic year to prevent modifications
+ */
+const lockAcademicYear = async (req, res) => {
+  try {
+    const { academic_year_id } = req.params;
+    const { reason = null } = req.body || {};
+
+    const [rows] = await pool.query('SELECT id, lifecycle_status FROM academic_years WHERE id = ?', [academic_year_id]);
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: { code: 'NOT_FOUND', message: 'Academic year not found.' }
+      });
+    }
+    if (rows[0].lifecycle_status === 'locked') {
+      return res.status(409).json({
+        success: false,
+        data: null,
+        error: { code: 'CONFLICT', message: 'Academic year is already locked.' }
+      });
+    }
+
+    await pool.query(
+      `UPDATE academic_years
+       SET lifecycle_status = 'locked',
+           locked_at = CURRENT_TIMESTAMP,
+           locked_by = ?,
+           lock_reason = ?
+       WHERE id = ?`,
+      [req.user.id, reason, academic_year_id]
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        academic_year_id: Number(academic_year_id),
+        lifecycle_status: 'locked',
+        locked_at: new Date().toISOString(),
+        locked_by: req.user.id,
+        reason
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error('Lock academic year error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'An error occurred while locking academic year.' }
+    });
+  }
+};
+
+/**
+ * POST /api/v1/admin/academic-years/:academic_year_id/reopen
+ * Reopen previously locked academic year
+ */
+const reopenAcademicYear = async (req, res) => {
+  try {
+    const { academic_year_id } = req.params;
+    const { reason = null } = req.body || {};
+
+    const [rows] = await pool.query('SELECT id, lifecycle_status FROM academic_years WHERE id = ?', [academic_year_id]);
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: { code: 'NOT_FOUND', message: 'Academic year not found.' }
+      });
+    }
+    if (rows[0].lifecycle_status !== 'locked') {
+      return res.status(409).json({
+        success: false,
+        data: null,
+        error: { code: 'REOPEN_NOT_ALLOWED', message: 'Only locked academic years can be reopened.' }
+      });
+    }
+
+    await pool.query(
+      `UPDATE academic_years
+       SET lifecycle_status = CASE WHEN is_current = TRUE THEN 'active' ELSE 'closed' END,
+           reopened_at = CURRENT_TIMESTAMP,
+           reopened_by = ?,
+           reopen_reason = ?
+       WHERE id = ?`,
+      [req.user.id, reason, academic_year_id]
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        academic_year_id: Number(academic_year_id),
+        reopened_at: new Date().toISOString(),
+        reopened_by: req.user.id,
+        reason
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error('Reopen academic year error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'An error occurred while reopening academic year.' }
+    });
+  }
+};
+
 module.exports = {
   // Schools
   listSchools,
@@ -1759,6 +2043,12 @@ module.exports = {
   createPromotionCriteria,
   updatePromotionCriteria,
   deletePromotionCriteria,
+  // Academic Year Lifecycle
+  listAcademicYears,
+  createAcademicYear,
+  activateAcademicYear,
+  lockAcademicYear,
+  reopenAcademicYear,
   // Statistics
   getStatistics,
   getSchoolStatistics

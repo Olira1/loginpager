@@ -72,6 +72,13 @@ CREATE TABLE academic_years (
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
     is_current BOOLEAN DEFAULT FALSE,            -- Only one should be current
+    lifecycle_status ENUM('planned', 'active', 'closed', 'locked') NOT NULL DEFAULT 'planned',
+    locked_at TIMESTAMP NULL,
+    locked_by INT NULL,
+    lock_reason VARCHAR(500) NULL,
+    reopened_at TIMESTAMP NULL,
+    reopened_by INT NULL,
+    reopen_reason VARCHAR(500) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -88,9 +95,34 @@ CREATE TABLE semesters (
     start_date DATE,
     end_date DATE,
     is_current BOOLEAN DEFAULT FALSE,
+    lifecycle_status ENUM('open', 'submission_closed', 'published', 'locked') NOT NULL DEFAULT 'open',
+    submission_closed_at TIMESTAMP NULL,
+    published_at TIMESTAMP NULL,
+    locked_at TIMESTAMP NULL,
+    locked_by INT NULL,
+    lock_reason VARCHAR(500) NULL,
+    reopened_at TIMESTAMP NULL,
+    reopened_by INT NULL,
+    reopen_reason VARCHAR(500) NULL,
 
     FOREIGN KEY (academic_year_id) REFERENCES academic_years(id) ON DELETE CASCADE
 );
+
+ALTER TABLE academic_years
+ADD CONSTRAINT fk_academic_years_locked_by
+FOREIGN KEY (locked_by) REFERENCES users(id) ON DELETE SET NULL;
+
+ALTER TABLE academic_years
+ADD CONSTRAINT fk_academic_years_reopened_by
+FOREIGN KEY (reopened_by) REFERENCES users(id) ON DELETE SET NULL;
+
+ALTER TABLE semesters
+ADD CONSTRAINT fk_semesters_locked_by
+FOREIGN KEY (locked_by) REFERENCES users(id) ON DELETE SET NULL;
+
+ALTER TABLE semesters
+ADD CONSTRAINT fk_semesters_reopened_by
+FOREIGN KEY (reopened_by) REFERENCES users(id) ON DELETE SET NULL;
 
 -- =====================================================
 -- TABLE 5: grades
@@ -158,6 +190,33 @@ CREATE TABLE students (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
     FOREIGN KEY (academic_year_id) REFERENCES academic_years(id) ON DELETE SET NULL
+);
+
+-- =====================================================
+-- TABLE 8b: student_enrollments
+-- Purpose: Year-by-year enrollment history per student
+-- =====================================================
+CREATE TABLE student_enrollments (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    student_id INT NOT NULL,
+    academic_year_id INT NOT NULL,
+    grade_id INT NOT NULL,
+    class_id INT NOT NULL,
+    status ENUM('active', 'promoted', 'repeated', 'graduated', 'withdrawn', 'transferred_out') NOT NULL DEFAULT 'active',
+    entry_reason ENUM('new_registration', 'promotion', 'manual_transfer', 'correction') NOT NULL DEFAULT 'new_registration',
+    is_current BOOLEAN NOT NULL DEFAULT FALSE,
+    started_at DATE NULL,
+    ended_at DATE NULL,
+    created_by INT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    FOREIGN KEY (academic_year_id) REFERENCES academic_years(id) ON DELETE CASCADE,
+    FOREIGN KEY (grade_id) REFERENCES grades(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE KEY unique_student_year_enrollment (student_id, academic_year_id)
 );
 
 -- =====================================================
@@ -294,6 +353,26 @@ CREATE TABLE marks (
 );
 
 -- =====================================================
+-- TABLE 14b: mark_change_audit
+-- Purpose: Immutable audit trail for marks changes
+-- =====================================================
+CREATE TABLE mark_change_audit (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    mark_id INT NULL,
+    action ENUM('insert', 'update', 'delete') NOT NULL,
+    old_score DECIMAL(5,2) NULL,
+    new_score DECIMAL(5,2) NULL,
+    old_max_score DECIMAL(5,2) NULL,
+    new_max_score DECIMAL(5,2) NULL,
+    changed_by INT NULL,
+    change_reason VARCHAR(500) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (mark_id) REFERENCES marks(id) ON DELETE SET NULL,
+    FOREIGN KEY (changed_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- =====================================================
 -- TABLE 15: grade_submissions
 -- Purpose: Track teacher grade submission status
 -- Teachers submit grades for Class Head review
@@ -388,6 +467,101 @@ CREATE TABLE promotion_criteria (
 );
 
 -- =====================================================
+-- TABLE 20: promotion_batches
+-- Purpose: Track promotion preview/commit operations
+-- =====================================================
+CREATE TABLE promotion_batches (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    batch_code VARCHAR(50) NOT NULL UNIQUE,
+    school_id INT NOT NULL,
+    from_academic_year_id INT NOT NULL,
+    to_academic_year_id INT NOT NULL,
+    promotion_criteria_id INT NULL,
+    status ENUM('preview', 'committed', 'cancelled') NOT NULL DEFAULT 'preview',
+    summary_json JSON NULL,
+    created_by INT NOT NULL,
+    committed_at TIMESTAMP NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE,
+    FOREIGN KEY (from_academic_year_id) REFERENCES academic_years(id) ON DELETE CASCADE,
+    FOREIGN KEY (to_academic_year_id) REFERENCES academic_years(id) ON DELETE CASCADE,
+    FOREIGN KEY (promotion_criteria_id) REFERENCES promotion_criteria(id) ON DELETE SET NULL,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- =====================================================
+-- TABLE 21: promotion_batch_items
+-- Purpose: Student-level outcomes per promotion batch
+-- =====================================================
+CREATE TABLE promotion_batch_items (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    batch_id INT NOT NULL,
+    student_id INT NOT NULL,
+    from_enrollment_id INT NULL,
+    to_enrollment_id INT NULL,
+    decision ENUM('promoted', 'repeated', 'graduated', 'withdrawn') NOT NULL,
+    from_grade_level INT NULL,
+    to_grade_level INT NULL,
+    from_class_id INT NULL,
+    to_class_id INT NULL,
+    item_status ENUM('planned', 'applied', 'skipped', 'failed') NOT NULL DEFAULT 'planned',
+    error_message VARCHAR(500) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (batch_id) REFERENCES promotion_batches(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    FOREIGN KEY (from_enrollment_id) REFERENCES student_enrollments(id) ON DELETE SET NULL,
+    FOREIGN KEY (to_enrollment_id) REFERENCES student_enrollments(id) ON DELETE SET NULL,
+    FOREIGN KEY (from_class_id) REFERENCES classes(id) ON DELETE SET NULL,
+    FOREIGN KEY (to_class_id) REFERENCES classes(id) ON DELETE SET NULL,
+    UNIQUE KEY unique_batch_student (batch_id, student_id)
+);
+
+-- =====================================================
+-- TABLE 22: registration_batches
+-- Purpose: Audit manual/upload registration operations
+-- =====================================================
+CREATE TABLE registration_batches (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    batch_code VARCHAR(50) NOT NULL UNIQUE,
+    school_id INT NOT NULL,
+    batch_type ENUM('students_manual', 'students_upload', 'teachers_manual', 'teachers_upload') NOT NULL,
+    source_file_name VARCHAR(255) NULL,
+    total_rows INT NOT NULL DEFAULT 0,
+    successful_rows INT NOT NULL DEFAULT 0,
+    failed_rows INT NOT NULL DEFAULT 0,
+    summary_json JSON NULL,
+    created_by INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- =====================================================
+-- TABLE 23: registration_batch_rows
+-- Purpose: Row-level registration outcomes
+-- =====================================================
+CREATE TABLE registration_batch_rows (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    batch_id INT NOT NULL,
+    `row_number` INT NULL,
+    entity_type ENUM('student', 'teacher', 'parent') NOT NULL,
+    entity_id INT NULL,
+    status ENUM('success', 'failed', 'skipped') NOT NULL,
+    error_code VARCHAR(100) NULL,
+    error_message VARCHAR(500) NULL,
+    row_data_json JSON NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (batch_id) REFERENCES registration_batches(id) ON DELETE CASCADE
+);
+
+-- =====================================================
 -- INDEXES FOR PERFORMANCE
 -- =====================================================
 CREATE INDEX idx_users_school ON users(school_id);
@@ -401,6 +575,14 @@ CREATE INDEX idx_teaching_assignments_teacher ON teaching_assignments(teacher_id
 CREATE INDEX idx_teaching_assignments_class ON teaching_assignments(class_id);
 CREATE INDEX idx_teachers_school ON teachers(school_id);
 CREATE INDEX idx_teachers_staff_code ON teachers(staff_code);
+CREATE INDEX idx_student_enrollments_current ON student_enrollments(student_id, is_current);
+CREATE INDEX idx_student_enrollments_class_year ON student_enrollments(class_id, academic_year_id);
+CREATE INDEX idx_promotion_batches_school_year ON promotion_batches(school_id, from_academic_year_id, to_academic_year_id);
+CREATE INDEX idx_promotion_batch_items_status ON promotion_batch_items(batch_id, item_status);
+CREATE INDEX idx_registration_batches_school_type ON registration_batches(school_id, batch_type);
+CREATE INDEX idx_registration_batch_rows_batch_status ON registration_batch_rows(batch_id, status);
+CREATE INDEX idx_mark_change_audit_mark_time ON mark_change_audit(mark_id, created_at);
+CREATE INDEX idx_mark_change_audit_actor_time ON mark_change_audit(changed_by, created_at);
 
 -- =====================================================
 -- SCHEMA COMPLETE

@@ -2721,6 +2721,196 @@ const resetStoreHouseUserPassword = async (req, res) => {
   return resetSchoolUserPassword(req, res, 'store_house', 'Store house user');
 };
 
+const initializeClassesForAcademicYear = async (req, res) => {
+  try {
+    const schoolId = req.user.school_id;
+    const { academic_year_id } = req.params;
+    const { source_academic_year_id, copy_class_heads = false } = req.body || {};
+
+    if (!source_academic_year_id) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'source_academic_year_id is required.' }
+      });
+    }
+
+    const [targetYear] = await pool.query('SELECT id FROM academic_years WHERE id = ?', [academic_year_id]);
+    const [sourceYear] = await pool.query('SELECT id FROM academic_years WHERE id = ?', [source_academic_year_id]);
+    if (targetYear.length === 0 || sourceYear.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: { code: 'NOT_FOUND', message: 'Source or target academic year not found.' }
+      });
+    }
+
+    const [sourceClasses] = await pool.query(
+      `SELECT c.id, c.grade_id, c.name, c.class_head_id
+       FROM classes c
+       JOIN grades g ON g.id = c.grade_id
+       WHERE g.school_id = ? AND c.academic_year_id = ?
+       ORDER BY c.id ASC`,
+      [schoolId, source_academic_year_id]
+    );
+
+    let createdClasses = 0;
+    let skippedExisting = 0;
+    for (const cls of sourceClasses) {
+      const [existing] = await pool.query(
+        `SELECT id FROM classes
+         WHERE grade_id = ? AND name = ? AND academic_year_id = ?
+         LIMIT 1`,
+        [cls.grade_id, cls.name, academic_year_id]
+      );
+
+      if (existing.length > 0) {
+        skippedExisting += 1;
+        continue;
+      }
+
+      await pool.query(
+        `INSERT INTO classes (grade_id, name, class_head_id, academic_year_id)
+         VALUES (?, ?, ?, ?)`,
+        [cls.grade_id, cls.name, copy_class_heads ? cls.class_head_id : null, academic_year_id]
+      );
+      createdClasses += 1;
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        created_classes: createdClasses,
+        skipped_existing: skippedExisting,
+        source_academic_year_id: Number(source_academic_year_id),
+        target_academic_year_id: Number(academic_year_id)
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error('Initialize classes for academic year error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to initialize classes for academic year.' }
+    });
+  }
+};
+
+const updateSemesterLifecycleStatus = async (req, res, nextStatus, timestampField = null) => {
+  try {
+    const schoolId = req.user.school_id;
+    const { semester_id } = req.params;
+    const { reason = null } = req.body || {};
+
+    const [semRows] = await pool.query(
+      `SELECT sem.id, sem.academic_year_id, sem.lifecycle_status
+       FROM semesters sem
+       WHERE sem.id = ?`,
+      [semester_id]
+    );
+    if (semRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: { code: 'NOT_FOUND', message: 'Semester not found.' }
+      });
+    }
+
+    const [schoolScope] = await pool.query(
+      `SELECT c.id
+       FROM classes c
+       JOIN grades g ON g.id = c.grade_id
+       WHERE g.school_id = ? AND c.academic_year_id = ?
+       LIMIT 1`,
+      [schoolId, semRows[0].academic_year_id]
+    );
+    if (schoolScope.length === 0) {
+      return res.status(403).json({
+        success: false,
+        data: null,
+        error: { code: 'FORBIDDEN', message: 'Semester is not associated with your school scope.' }
+      });
+    }
+
+    if (nextStatus === 'locked') {
+      await pool.query(
+        `UPDATE semesters
+         SET lifecycle_status = 'locked',
+             locked_at = CURRENT_TIMESTAMP,
+             locked_by = ?,
+             lock_reason = ?
+         WHERE id = ?`,
+        [req.user.id, reason, semester_id]
+      );
+    } else if (nextStatus === 'open') {
+      await pool.query(
+        `UPDATE semesters
+         SET lifecycle_status = 'open',
+             reopened_at = CURRENT_TIMESTAMP,
+             reopened_by = ?,
+             reopen_reason = ?
+         WHERE id = ?`,
+        [req.user.id, reason, semester_id]
+      );
+    } else if (timestampField) {
+      await pool.query(
+        `UPDATE semesters
+         SET lifecycle_status = ?, ${timestampField} = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [nextStatus, semester_id]
+      );
+    } else {
+      await pool.query(
+        `UPDATE semesters
+         SET lifecycle_status = ?
+         WHERE id = ?`,
+        [nextStatus, semester_id]
+      );
+    }
+
+    const [updated] = await pool.query(
+      `SELECT id, academic_year_id, lifecycle_status, is_current,
+              submission_closed_at, published_at, locked_at, reopened_at
+       FROM semesters WHERE id = ?`,
+      [semester_id]
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        semester_id: Number(semester_id),
+        academic_year_id: updated[0].academic_year_id,
+        lifecycle_status: updated[0].lifecycle_status,
+        submission_closed_at: updated[0].submission_closed_at,
+        published_at: updated[0].published_at,
+        locked_at: updated[0].locked_at,
+        reopened_at: updated[0].reopened_at
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error('Update semester lifecycle status error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to update semester lifecycle status.' }
+    });
+  }
+};
+
+const openSemester = async (req, res) =>
+  updateSemesterLifecycleStatus(req, res, 'open');
+
+const closeSemesterSubmission = async (req, res) =>
+  updateSemesterLifecycleStatus(req, res, 'submission_closed', 'submission_closed_at');
+
+const lockSemester = async (req, res) =>
+  updateSemesterLifecycleStatus(req, res, 'locked');
+
+const reopenSemester = async (req, res) =>
+  updateSemesterLifecycleStatus(req, res, 'open');
+
 module.exports = {
   // Grades
   listGrades, getGrade, createGrade, updateGrade, deleteGrade,
@@ -2745,7 +2935,9 @@ module.exports = {
   // Registrars
   createRegistrar, listRegistrars, updateRegistrar, deactivateRegistrar, activateRegistrar, deleteRegistrar, resetRegistrarPassword,
   // Store House Users
-  createStoreHouseUser, listStoreHouseUsers, updateStoreHouseUser, deactivateStoreHouseUser, activateStoreHouseUser, deleteStoreHouseUser, resetStoreHouseUserPassword
+  createStoreHouseUser, listStoreHouseUsers, updateStoreHouseUser, deactivateStoreHouseUser, activateStoreHouseUser, deleteStoreHouseUser, resetStoreHouseUserPassword,
+  // Multi-year lifecycle
+  initializeClassesForAcademicYear, openSemester, closeSemesterSubmission, lockSemester, reopenSemester
 };
 
 

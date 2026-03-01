@@ -48,6 +48,15 @@ router.post('/classes/:class_id/class-head', schoolHeadController.assignClassHea
 router.delete('/classes/:class_id/class-head', schoolHeadController.removeClassHead);
 
 // ==========================================
+// ACADEMIC YEAR LIFECYCLE
+// ==========================================
+router.post('/academic-years/:academic_year_id/initialize-classes', schoolHeadController.initializeClassesForAcademicYear);
+router.post('/semesters/:semester_id/open', schoolHeadController.openSemester);
+router.post('/semesters/:semester_id/close-submission', schoolHeadController.closeSemesterSubmission);
+router.post('/semesters/:semester_id/lock', schoolHeadController.lockSemester);
+router.post('/semesters/:semester_id/reopen', schoolHeadController.reopenSemester);
+
+// ==========================================
 // SUBJECTS
 // ==========================================
 router.get('/subjects', schoolHeadController.listSubjects);

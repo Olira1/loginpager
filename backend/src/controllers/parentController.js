@@ -30,6 +30,47 @@ const getChildInfo = async (studentId) => {
   return students.length > 0 ? students[0] : null;
 };
 
+// Resolve child class/grade context by requested academic year.
+// Falls back to current student snapshot to preserve compatibility.
+const resolveChildClassContext = async (child, academicYearId = null) => {
+  if (academicYearId) {
+    const [rows] = await pool.query(
+      `SELECT se.class_id, c.name as class_name, g.id as grade_id, g.name as grade_name
+       FROM student_enrollments se
+       JOIN classes c ON c.id = se.class_id
+       JOIN grades g ON g.id = se.grade_id
+       WHERE se.student_id = ? AND se.academic_year_id = ?
+       ORDER BY se.id DESC
+       LIMIT 1`,
+      [child.id, academicYearId]
+    );
+
+    if (rows.length > 0) {
+      return {
+        class_id: rows[0].class_id,
+        class_name: rows[0].class_name,
+        grade_id: rows[0].grade_id,
+        grade_name: rows[0].grade_name,
+        source: 'enrollment'
+      };
+    }
+  }
+
+  return {
+    class_id: child.class_id,
+    class_name: child.class_name,
+    grade_id: child.grade_id,
+    grade_name: child.grade_name,
+    source: 'current_student'
+  };
+};
+
+const getAcademicYearFromSemester = async (semesterId) => {
+  if (!semesterId) return null;
+  const [rows] = await pool.query('SELECT academic_year_id FROM semesters WHERE id = ? LIMIT 1', [semesterId]);
+  return rows.length > 0 ? rows[0].academic_year_id : null;
+};
+
 // ==========================================
 // LIST CHILDREN
 // ==========================================
@@ -104,6 +145,7 @@ const getChildSemesterReport = async (req, res) => {
       });
     }
 
+    const classContext = await resolveChildClassContext(child, academic_year_id);
     const [semesterInfo] = await pool.query('SELECT name FROM semesters WHERE id = ?', [semester_id]);
     const [yearInfo] = await pool.query('SELECT name FROM academic_years WHERE id = ?', [academic_year_id]);
 
@@ -139,13 +181,13 @@ const getChildSemesterReport = async (req, res) => {
        WHERE m.student_id = ? AND m.semester_id = ? AND ta.class_id = ? AND gs.status IN ('submitted', 'approved')
        GROUP BY s.id, s.name
        ORDER BY s.name`,
-      [student_id, semester_id, child.class_id]
+      [student_id, semester_id, classContext.class_id]
     );
 
     // Get total students
     const [totalStudents] = await pool.query(
       'SELECT COUNT(*) as count FROM students WHERE class_id = ?',
-      [child.class_id]
+      [classContext.class_id]
     );
 
     return res.status(200).json({
@@ -155,8 +197,8 @@ const getChildSemesterReport = async (req, res) => {
           id: child.id,
           code: child.code,
           name: child.name,
-          class_name: child.class_name,
-          grade_name: child.grade_name
+          class_name: classContext.class_name,
+          grade_name: classContext.grade_name
         },
         semester: semesterInfo[0]?.name,
         academic_year: yearInfo[0]?.name,
@@ -218,6 +260,8 @@ const getChildSubjectGrades = async (req, res) => {
       });
     }
 
+    const semesterAcademicYearId = await getAcademicYearFromSemester(semester_id);
+    const classContext = await resolveChildClassContext(child, semesterAcademicYearId);
     const [subjectInfo] = await pool.query('SELECT id, name FROM subjects WHERE id = ?', [subject_id]);
 
     // Get teaching assignment
@@ -226,7 +270,7 @@ const getChildSubjectGrades = async (req, res) => {
        FROM teaching_assignments ta
        JOIN users u ON ta.teacher_id = u.id
        WHERE ta.class_id = ? AND ta.subject_id = ?`,
-      [child.class_id, subject_id]
+      [classContext.class_id, subject_id]
     );
 
     if (assignments.length === 0) {
@@ -319,6 +363,7 @@ const getChildRank = async (req, res) => {
       });
     }
 
+    const classContext = await resolveChildClassContext(child, academic_year_id);
     const [semesterInfo] = await pool.query('SELECT name FROM semesters WHERE id = ?', [semester_id]);
     const [yearInfo] = await pool.query('SELECT name FROM academic_years WHERE id = ?', [academic_year_id]);
 
@@ -336,7 +381,7 @@ const getChildRank = async (req, res) => {
        FROM student_semester_results ssr
        JOIN students s ON ssr.student_id = s.id
        WHERE s.class_id = ? AND ssr.semester_id = ?`,
-      [child.class_id, semester_id]
+      [classContext.class_id, semester_id]
     );
 
     const studentResult = results[0] || {};
@@ -351,7 +396,7 @@ const getChildRank = async (req, res) => {
         student: {
           id: child.id,
           name: child.name,
-          class_name: child.class_name
+          class_name: classContext.class_name
         },
         type: type,
         period: `${semesterInfo[0]?.name} ${yearInfo[0]?.name}`,
@@ -412,6 +457,9 @@ const listChildSubjectScores = async (req, res) => {
       });
     }
 
+    const semesterAcademicYearId = await getAcademicYearFromSemester(semester_id);
+    const classContext = await resolveChildClassContext(child, semesterAcademicYearId);
+
     // Get all subjects with combined weighted scores from marks table
     const [subjects] = await pool.query(
       `SELECT s.id as subject_id, s.name,
@@ -426,7 +474,7 @@ const listChildSubjectScores = async (req, res) => {
        WHERE m.student_id = ? AND m.semester_id = ? AND ta.class_id = ?
        GROUP BY s.id, s.name
        ORDER BY s.name`,
-      [student_id, semester_id, child.class_id]
+      [student_id, semester_id, classContext.class_id]
     );
 
     return res.status(200).json({
@@ -480,6 +528,7 @@ const getChildYearReport = async (req, res) => {
       });
     }
 
+    const classContext = await resolveChildClassContext(child, academic_year_id);
     const [yearInfo] = await pool.query('SELECT name FROM academic_years WHERE id = ?', [academic_year_id]);
 
     // Get all semesters for this academic year
@@ -520,7 +569,7 @@ const getChildYearReport = async (req, res) => {
          WHERE m.student_id = ? AND m.semester_id = ? AND ta.class_id = ?
          GROUP BY s.id, s.name
          ORDER BY s.name`,
-        [student_id, sem.id, child.class_id]
+        [student_id, sem.id, classContext.class_id]
       );
 
       for (const sub of subjects) {
@@ -548,7 +597,7 @@ const getChildYearReport = async (req, res) => {
     // Get total students for rank context
     const [totalStudents] = await pool.query(
       'SELECT COUNT(*) as count FROM students WHERE class_id = ?',
-      [child.class_id]
+      [classContext.class_id]
     );
 
     return res.status(200).json({
@@ -557,8 +606,8 @@ const getChildYearReport = async (req, res) => {
         student: {
           id: child.id,
           name: child.name,
-          class_name: child.class_name,
-          grade_name: child.grade_name
+          class_name: classContext.class_name,
+          grade_name: classContext.grade_name
         },
         academic_year: yearInfo[0]?.name,
         semesters: semesterSummaries,

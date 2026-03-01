@@ -24,6 +24,7 @@ router.get('/students/:student_id', registrarController.getStudent);
 router.put('/students/:student_id', registrarController.updateStudent);
 router.patch('/students/:student_id/deactivate', registrarController.deactivateStudent);
 router.patch('/students/:student_id/activate', registrarController.activateStudent);
+router.get('/students/:student_id/enrollments', registrarController.listStudentEnrollments);
 
 // Students bulk upload
 router.post('/students/upload', upload.single('file'), registrarController.uploadStudents);
@@ -60,6 +61,14 @@ router.put('/parents/:parent_id', registrarController.updateParent);
 // ==========================================
 router.get('/metadata', registrarController.getRegistrationMetadata);
 router.get('/statistics', registrarController.getStatistics);
+
+// ==========================================
+// MULTI-YEAR LIFECYCLE
+// ==========================================
+router.post('/promotions/preview', registrarController.previewPromotions);
+router.post('/promotions/commit', registrarController.commitPromotions);
+router.get('/registration-batches', registrarController.listRegistrationBatches);
+router.get('/registration-batches/:batch_id', registrarController.getRegistrationBatch);
 
 module.exports = router;
 

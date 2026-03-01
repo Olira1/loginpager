@@ -114,6 +114,15 @@ router.put('/promotion-criteria/:criteria_id', adminController.updatePromotionCr
 router.delete('/promotion-criteria/:criteria_id', adminController.deletePromotionCriteria);
 
 // ==========================================
+// ACADEMIC YEAR LIFECYCLE
+// ==========================================
+router.get('/academic-years', adminController.listAcademicYears);
+router.post('/academic-years', adminController.createAcademicYear);
+router.post('/academic-years/:academic_year_id/activate', adminController.activateAcademicYear);
+router.post('/academic-years/:academic_year_id/lock', adminController.lockAcademicYear);
+router.post('/academic-years/:academic_year_id/reopen', adminController.reopenAcademicYear);
+
+// ==========================================
 // STATISTICS
 // ==========================================
 
