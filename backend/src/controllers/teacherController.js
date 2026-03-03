@@ -55,16 +55,96 @@ const assertSemesterEditable = async (semesterId) => {
   return { allowed: true, status: 200, error: null };
 };
 
+/**
+ * GET /api/v1/teacher/scope?academic_year_id=X
+ * Returns scope for the selected year: class_head | teacher | null
+ * Used by frontend to switch portal (Teacher vs Class Head) based on year.
+ */
+const getScope = async (req, res) => {
+  try {
+    const { academic_year_id } = req.query;
+    if (!academic_year_id) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'academic_year_id is required.' }
+      });
+    }
+
+    const userId = req.user.id;
+    const yearId = parseInt(academic_year_id, 10);
+
+    // Check class head first
+    const [classHeadClasses] = await pool.query(
+      `SELECT c.id, c.name, g.name as grade_name
+       FROM classes c
+       JOIN grades g ON c.grade_id = g.id
+       WHERE c.class_head_id = ? AND c.academic_year_id = ?`,
+      [userId, yearId]
+    );
+
+    if (classHeadClasses.length > 0) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          scope: 'class_head',
+          class_info: { id: classHeadClasses[0].id, name: classHeadClasses[0].name, grade_name: classHeadClasses[0].grade_name }
+        },
+        error: null
+      });
+    }
+
+    // Fallback: teacher assignment
+    const [teacherClasses] = await pool.query(
+      `SELECT DISTINCT c.id, c.name, g.name as grade_name
+       FROM teaching_assignments ta
+       JOIN classes c ON c.id = ta.class_id
+       JOIN grades g ON g.id = c.grade_id
+       WHERE ta.teacher_id = ? AND ta.academic_year_id = ?`,
+      [userId, yearId]
+    );
+
+    if (teacherClasses.length > 0) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          scope: 'teacher',
+          class_info: { id: teacherClasses[0].id, name: teacherClasses[0].name, grade_name: teacherClasses[0].grade_name }
+        },
+        error: null
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: { scope: null, class_info: null },
+      error: null
+    });
+  } catch (error) {
+    console.error('Get scope error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to get scope.' }
+    });
+  }
+};
+
 const listAcademicYears = async (req, res) => {
   try {
-    const teacherId = req.user.id;
+    const userId = req.user.id;
+    // Include years from: (1) teaching_assignments, (2) classes where user is class_head
+    // So class_head users can switch to years where they're class head (will redirect to class-head portal)
     const [years] = await pool.query(
       `SELECT DISTINCT ay.id, ay.name, ay.start_date, ay.end_date, ay.is_current
-       FROM teaching_assignments ta
-       JOIN academic_years ay ON ay.id = ta.academic_year_id
-       WHERE ta.teacher_id = ?
+       FROM (
+         SELECT ta.academic_year_id FROM teaching_assignments ta WHERE ta.teacher_id = ?
+         UNION
+         SELECT c.academic_year_id FROM classes c WHERE c.class_head_id = ? AND c.academic_year_id IS NOT NULL
+       ) combined
+       JOIN academic_years ay ON ay.id = combined.academic_year_id
        ORDER BY ay.start_date DESC, ay.id DESC`,
-      [teacherId]
+      [userId, userId]
     );
     return res.status(200).json({
       success: true,
@@ -97,7 +177,7 @@ const listSemesters = async (req, res) => {
       query += ' AND s.academic_year_id = ?';
       params.push(academic_year_id);
     }
-    query += ' ORDER BY ay.start_date DESC, s.semester_number ASC, s.id ASC';
+    query += ' ORDER BY s.academic_year_id DESC, s.semester_number ASC, s.id ASC';
     const [items] = await pool.query(query, params);
     return res.status(200).json({
       success: true,
@@ -1600,6 +1680,7 @@ const getComputedAverages = async (req, res) => {
 };
 
 module.exports = {
+  getScope,
   listAcademicYears,
   listSemesters,
   listAssignedClasses,

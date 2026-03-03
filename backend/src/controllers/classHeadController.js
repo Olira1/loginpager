@@ -4,36 +4,128 @@
 
 const { pool } = require('../config/db');
 
-// Helper to get class head's assigned class
-const getClassHeadClass = async (userId) => {
-  const [classes] = await pool.query(
-    `SELECT c.id, c.name, c.academic_year_id, g.name as grade_name, g.id as grade_id
+// Helper to get class head's assigned classes (optionally filtered by academic year)
+const getClassHeadClasses = async (userId, academicYearId = null) => {
+  let query = `SELECT c.id, c.name, c.academic_year_id, g.name as grade_name, g.id as grade_id
      FROM classes c
      JOIN grades g ON c.grade_id = g.id
-     WHERE c.class_head_id = ?`,
-    [userId]
-  );
+     WHERE c.class_head_id = ?`;
+  const params = [userId];
+
+  if (academicYearId) {
+    query += ' AND c.academic_year_id = ?';
+    params.push(academicYearId);
+  }
+
+  query += ' ORDER BY c.academic_year_id DESC, c.id ASC';
+  const [classes] = await pool.query(query, params);
+  return classes;
+};
+
+// Backward-compatible helper to get one class head class
+const getClassHeadClass = async (userId, academicYearId = null) => {
+  const classes = await getClassHeadClasses(userId, academicYearId);
   return classes.length > 0 ? classes[0] : null;
+};
+
+// Helper to get a class the user teaches in (fallback for read-only views)
+const getTeacherAssignedClass = async (userId, academicYearId = null) => {
+  let query = `SELECT DISTINCT c.id, c.name, c.academic_year_id, g.name as grade_name, g.id as grade_id
+     FROM teaching_assignments ta
+     JOIN classes c ON c.id = ta.class_id
+     JOIN grades g ON g.id = c.grade_id
+     WHERE ta.teacher_id = ?`;
+  const params = [userId];
+
+  if (academicYearId) {
+    query += ' AND ta.academic_year_id = ?';
+    params.push(academicYearId);
+  }
+
+  query += ' ORDER BY c.academic_year_id DESC, c.id ASC';
+  const [classes] = await pool.query(query, params);
+  return classes.length > 0 ? classes[0] : null;
+};
+
+// For read-only class-head pages, allow fallback to teacher assignment in that year.
+const resolveReadableClassContext = async (userId, academicYearId = null) => {
+  const classHeadClass = await getClassHeadClass(userId, academicYearId);
+  if (classHeadClass) {
+    return { classInfo: classHeadClass, scope: 'class_head' };
+  }
+
+  const teacherClass = await getTeacherAssignedClass(userId, academicYearId);
+  if (teacherClass) {
+    return { classInfo: teacherClass, scope: 'teacher' };
+  }
+
+  return { classInfo: null, scope: null };
+};
+
+/**
+ * GET /api/v1/class-head/scope?academic_year_id=X
+ * Returns scope for the selected year: class_head | teacher | null
+ * Used by frontend to switch portal (Teacher vs Class Head) based on year.
+ */
+const getScope = async (req, res) => {
+  try {
+    const { academic_year_id } = req.query;
+    if (!academic_year_id) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'academic_year_id is required.' }
+      });
+    }
+
+    const result = await resolveReadableClassContext(req.user.id, parseInt(academic_year_id, 10));
+    return res.status(200).json({
+      success: true,
+      data: {
+        scope: result.scope,
+        class_info: result.classInfo ? { id: result.classInfo.id, name: result.classInfo.name, grade_name: result.classInfo.grade_name } : null
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error('Get scope error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to get scope.' }
+    });
+  }
 };
 
 const listSemesters = async (req, res) => {
   try {
-    const classInfo = await getClassHeadClass(req.user.id);
-    if (!classInfo) {
+    const [yearScopes] = await pool.query(
+      `SELECT DISTINCT c.academic_year_id
+       FROM classes c
+       WHERE c.class_head_id = ? AND c.academic_year_id IS NOT NULL
+       UNION
+       SELECT DISTINCT ta.academic_year_id
+       FROM teaching_assignments ta
+       WHERE ta.teacher_id = ? AND ta.academic_year_id IS NOT NULL`,
+      [req.user.id, req.user.id]
+    );
+
+    if (yearScopes.length === 0) {
       return res.status(403).json({
         success: false,
         data: null,
-        error: { code: 'FORBIDDEN', message: 'You are not assigned as class head.' }
+        error: { code: 'FORBIDDEN', message: 'You are not assigned to any academic year.' }
       });
     }
 
+    const yearIds = yearScopes.map((row) => row.academic_year_id);
     const [semesters] = await pool.query(
-      `SELECT s.id, s.name, s.semester_number, s.academic_year_id, ay.name as academic_year_name, s.lifecycle_status
+      `SELECT DISTINCT s.id, s.name, s.semester_number, s.academic_year_id, ay.name as academic_year_name, s.lifecycle_status
        FROM semesters s
        JOIN academic_years ay ON ay.id = s.academic_year_id
-       WHERE s.academic_year_id = ?
-       ORDER BY s.semester_number ASC, s.id ASC`,
-      [classInfo.academic_year_id]
+       WHERE s.academic_year_id IN (?)
+       ORDER BY s.academic_year_id DESC, s.semester_number ASC, s.id ASC`,
+      [yearIds]
     );
 
     return res.status(200).json({
@@ -112,16 +204,15 @@ const getPromotionRemark = (average, passingAverage = 50) => {
  */
 const listStudents = async (req, res) => {
   try {
-    const classInfo = await getClassHeadClass(req.user.id);
+    const { search, academic_year_id } = req.query;
+    const { classInfo } = await resolveReadableClassContext(req.user.id, academic_year_id || null);
     if (!classInfo) {
       return res.status(403).json({
         success: false,
         data: null,
-        error: { code: 'FORBIDDEN', message: 'You are not assigned as class head.' }
+        error: { code: 'FORBIDDEN', message: 'You are not assigned as class head or teacher for the selected academic year.' }
       });
     }
-
-    const { search } = req.query;
 
     let query = `
       SELECT s.id as student_id, s.student_id_number as student_code,
@@ -173,14 +264,19 @@ const listStudents = async (req, res) => {
  */
 const getSubmissionChecklist = async (req, res) => {
   try {
-    const { semester_id } = req.query;
-    const classInfo = await getClassHeadClass(req.user.id);
+    const { semester_id, academic_year_id } = req.query;
+    let targetAcademicYearId = academic_year_id || null;
+    if (!targetAcademicYearId && semester_id) {
+      const [semester] = await pool.query('SELECT academic_year_id FROM semesters WHERE id = ?', [semester_id]);
+      targetAcademicYearId = semester[0]?.academic_year_id || null;
+    }
+    const { classInfo } = await resolveReadableClassContext(req.user.id, targetAcademicYearId);
     
     if (!classInfo) {
       return res.status(403).json({
         success: false,
         data: null,
-        error: { code: 'FORBIDDEN', message: 'You are not assigned as class head.' }
+        error: { code: 'FORBIDDEN', message: 'You are not assigned as class head or teacher for the selected academic year.' }
       });
     }
 
@@ -265,13 +361,14 @@ const getSubmissionChecklist = async (req, res) => {
 const getStudentRankings = async (req, res) => {
   try {
     const { semester_id } = req.query;
-    const classInfo = await getClassHeadClass(req.user.id);
+    const [semester] = await pool.query('SELECT academic_year_id FROM semesters WHERE id = ?', [semester_id]);
+    const { classInfo } = await resolveReadableClassContext(req.user.id, semester[0]?.academic_year_id || null);
     
     if (!classInfo) {
       return res.status(403).json({
         success: false,
         data: null,
-        error: { code: 'FORBIDDEN', message: 'You are not assigned as class head.' }
+        error: { code: 'FORBIDDEN', message: 'You are not assigned as class head or teacher for the selected academic year.' }
       });
     }
 
@@ -612,13 +709,13 @@ const rejectSubmission = async (req, res) => {
 const compileGrades = async (req, res) => {
   try {
     const { semester_id, academic_year_id } = req.body;
-    const classInfo = await getClassHeadClass(req.user.id);
+    const classInfo = await getClassHeadClass(req.user.id, academic_year_id || null);
     
     if (!classInfo) {
       return res.status(403).json({
         success: false,
         data: null,
-        error: { code: 'FORBIDDEN', message: 'You are not assigned as class head.' }
+        error: { code: 'FORBIDDEN', message: 'You are not assigned as class head for the selected academic year.' }
       });
     }
 
@@ -717,14 +814,19 @@ const compileGrades = async (req, res) => {
  */
 const getClassSnapshot = async (req, res) => {
   try {
-    const { semester_id } = req.query;
-    const classInfo = await getClassHeadClass(req.user.id);
+    const { semester_id, academic_year_id } = req.query;
+    let targetAcademicYearId = academic_year_id || null;
+    if (!targetAcademicYearId && semester_id) {
+      const [semester] = await pool.query('SELECT academic_year_id FROM semesters WHERE id = ?', [semester_id]);
+      targetAcademicYearId = semester[0]?.academic_year_id || null;
+    }
+    const { classInfo } = await resolveReadableClassContext(req.user.id, targetAcademicYearId);
     
     if (!classInfo) {
       return res.status(403).json({
         success: false,
         data: null,
-        error: { code: 'FORBIDDEN', message: 'You are not assigned as class head.' }
+        error: { code: 'FORBIDDEN', message: 'You are not assigned as class head or teacher for the selected academic year.' }
       });
     }
 
@@ -821,13 +923,13 @@ const getClassSnapshot = async (req, res) => {
 const publishSemesterResults = async (req, res) => {
   try {
     const { semester_id, academic_year_id } = req.body;
-    const classInfo = await getClassHeadClass(req.user.id);
+    const classInfo = await getClassHeadClass(req.user.id, academic_year_id || null);
     
     if (!classInfo) {
       return res.status(403).json({
         success: false,
         data: null,
-        error: { code: 'FORBIDDEN', message: 'You are not assigned as class head.' }
+        error: { code: 'FORBIDDEN', message: 'You are not assigned as class head for the selected academic year.' }
       });
     }
 
@@ -872,13 +974,13 @@ const publishSemesterResults = async (req, res) => {
 const publishYearResults = async (req, res) => {
   try {
     const { academic_year_id } = req.body;
-    const classInfo = await getClassHeadClass(req.user.id);
+    const classInfo = await getClassHeadClass(req.user.id, academic_year_id || null);
     
     if (!classInfo) {
       return res.status(403).json({
         success: false,
         data: null,
-        error: { code: 'FORBIDDEN', message: 'You are not assigned as class head.' }
+        error: { code: 'FORBIDDEN', message: 'You are not assigned as class head for the selected academic year.' }
       });
     }
 
@@ -941,13 +1043,13 @@ const publishYearResults = async (req, res) => {
 const lockSemesterResults = async (req, res) => {
   try {
     const { semester_id, academic_year_id, reason = null } = req.body;
-    const classInfo = await getClassHeadClass(req.user.id);
+    const classInfo = await getClassHeadClass(req.user.id, academic_year_id || null);
 
     if (!classInfo) {
       return res.status(403).json({
         success: false,
         data: null,
-        error: { code: 'FORBIDDEN', message: 'You are not assigned as class head.' }
+        error: { code: 'FORBIDDEN', message: 'You are not assigned as class head for the selected academic year.' }
       });
     }
     if (!semester_id || !academic_year_id) {
@@ -1013,13 +1115,13 @@ const lockSemesterResults = async (req, res) => {
 const sendRosterToStoreHouse = async (req, res) => {
   try {
     const { semester_id, academic_year_id } = req.body;
-    const classInfo = await getClassHeadClass(req.user.id);
+    const classInfo = await getClassHeadClass(req.user.id, academic_year_id || null);
     
     if (!classInfo) {
       return res.status(403).json({
         success: false,
         data: null,
-        error: { code: 'FORBIDDEN', message: 'You are not assigned as class head.' }
+        error: { code: 'FORBIDDEN', message: 'You are not assigned as class head for the selected academic year.' }
       });
     }
 
@@ -1136,13 +1238,13 @@ const getStudentReport = async (req, res) => {
   try {
     const { student_id } = req.params;
     const { semester_id, academic_year_id, type = 'semester' } = req.query;
-    const classInfo = await getClassHeadClass(req.user.id);
+    const { classInfo } = await resolveReadableClassContext(req.user.id, academic_year_id || null);
     
     if (!classInfo) {
       return res.status(403).json({
         success: false,
         data: null,
-        error: { code: 'FORBIDDEN', message: 'You are not assigned as class head.' }
+        error: { code: 'FORBIDDEN', message: 'You are not assigned as class head or teacher for the selected academic year.' }
       });
     }
 
@@ -1285,6 +1387,7 @@ const getStudentReport = async (req, res) => {
 };
 
 module.exports = {
+  getScope,
   listSemesters,
   listStudents,
   getSubmissionChecklist,

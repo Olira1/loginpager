@@ -2,13 +2,20 @@
 // Maps to: GET /teacher/classes, GET /teacher/submissions
 
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LayoutDashboard, School, BookOpen, FileText, Settings, Send,
   BarChart3, AlertCircle, RefreshCw, ChevronRight, CheckCircle2,
   Clock, Users
 } from 'lucide-react';
-import { getAssignedClasses, getSubmissionStatus } from '../../services/teacherService';
+import { useAuth } from '../../context/AuthContext';
+import {
+  getAssignedClasses,
+  getSubmissionStatus,
+  getTeacherAcademicYears,
+  getTeacherSemesters,
+  getScope,
+} from '../../services/teacherService';
 
 // Stat Card Component
 const StatCard = ({ icon: Icon, label, value, color = 'indigo' }) => {
@@ -70,23 +77,88 @@ const StatusBadge = ({ status }) => {
 
 const TeacherDashboard = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { user } = useAuth();
   const [classes, setClasses] = useState([]);
   const [submissions, setSubmissions] = useState([]);
+  const [academicYears, setAcademicYears] = useState([]);
+  const [semesters, setSemesters] = useState([]);
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState('');
+  const [selectedSemesterId, setSelectedSemesterId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Load academic years on mount
   useEffect(() => {
-    fetchDashboardData();
-  }, []);
+    const loadYears = async () => {
+      try {
+        const res = await getTeacherAcademicYears();
+        if (res.success) {
+          const items = res.data?.items || [];
+          setAcademicYears(items);
+          const urlYearId = searchParams.get('academic_year_id');
+          let yearToSelect = null;
+          if (urlYearId && items.some((y) => String(y.id) === String(urlYearId))) {
+            yearToSelect = urlYearId;
+          } else if (items[0]) {
+            yearToSelect = String(items[0].id);
+          }
+          if (yearToSelect) {
+            setSelectedAcademicYearId(yearToSelect);
+            // class_head: if this year has class_head scope, redirect to class-head
+            if (user?.role === 'class_head') {
+              const scopeRes = await getScope(parseInt(yearToSelect, 10));
+              if (scopeRes.success && scopeRes.data?.scope === 'class_head') {
+                navigate(`/class-head?academic_year_id=${yearToSelect}`);
+                return;
+              }
+            }
+          } else {
+            setLoading(false);
+          }
+        } else {
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error('Error loading academic years:', err);
+        setLoading(false);
+      }
+    };
+    loadYears();
+  }, [searchParams, user?.role, navigate]);
+
+  // Load semesters when year changes
+  useEffect(() => {
+    if (!selectedAcademicYearId) return;
+    const loadSemesters = async () => {
+      try {
+        const res = await getTeacherSemesters({ academic_year_id: selectedAcademicYearId });
+        const items = res.success ? (res.data?.items || res.data || []) : [];
+        setSemesters(Array.isArray(items) ? items : []);
+        if (items[0]) setSelectedSemesterId(String(items[0].id));
+      } catch {
+        setSemesters([]);
+      }
+    };
+    loadSemesters();
+  }, [selectedAcademicYearId]);
+
+  useEffect(() => {
+    if (selectedAcademicYearId) {
+      fetchDashboardData();
+    }
+  }, [selectedAcademicYearId, selectedSemesterId]);
 
   const fetchDashboardData = async () => {
+    if (!selectedAcademicYearId) return;
     setLoading(true);
     setError(null);
     try {
-      // Fetch assigned classes and submission status in parallel
+      const params = { academic_year_id: parseInt(selectedAcademicYearId, 10) };
+      const submissionParams = { ...params, semester_id: selectedSemesterId || '' };
       const [classesRes, submissionsRes] = await Promise.all([
-        getAssignedClasses(),
-        getSubmissionStatus({ semester_id: '' }).catch(() => ({ success: true, data: { items: [] } }))
+        getAssignedClasses(params),
+        getSubmissionStatus(submissionParams).catch(() => ({ success: true, data: { items: [] } })),
       ]);
 
       if (classesRes.success) {
@@ -102,6 +174,25 @@ const TeacherDashboard = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleYearChange = async (e) => {
+    const yearId = e.target.value;
+    if (!yearId) return;
+    const yearIdNum = parseInt(yearId, 10);
+    // class_head users: check scope and redirect to class-head if applicable
+    if (user?.role === 'class_head') {
+      try {
+        const scopeRes = await getScope(yearIdNum);
+        if (scopeRes.success && scopeRes.data?.scope === 'class_head') {
+          navigate(`/class-head?academic_year_id=${yearId}`);
+          return;
+        }
+      } catch (err) {
+        console.error('Scope check failed:', err);
+      }
+    }
+    setSelectedAcademicYearId(yearId);
   };
 
   // Calculate stats
@@ -139,9 +230,39 @@ const TeacherDashboard = () => {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Teacher Dashboard</h1>
-        <p className="text-gray-500 mt-1">Overview of assigned classes, subjects, and submission statuses.</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Teacher Dashboard</h1>
+          <p className="text-gray-500 mt-1">Overview of assigned classes, subjects, and submission statuses.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {academicYears.length > 0 && (
+            <select
+              value={selectedAcademicYearId}
+              onChange={handleYearChange}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+            >
+              {academicYears.map((year) => (
+                <option key={year.id} value={year.id}>
+                  {year.name || `Academic Year ${year.id}`}
+                </option>
+              ))}
+            </select>
+          )}
+          {semesters.length > 0 && (
+            <select
+              value={selectedSemesterId}
+              onChange={(e) => setSelectedSemesterId(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+            >
+              {semesters.map((sem) => (
+                <option key={sem.id} value={sem.id}>
+                  {sem.academic_year_name || `Year ${sem.academic_year_id}`} - {sem.name || `Semester ${sem.semester_number}`}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
       </div>
 
       {/* Stats Row */}

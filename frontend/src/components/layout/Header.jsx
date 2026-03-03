@@ -1,7 +1,7 @@
 // Header Component - Top navigation bar
 // Shows user info, notifications, and logout
 
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Menu, Bell, LogOut, User, ChevronDown } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
@@ -13,6 +13,7 @@ import { roleDisplayNames } from '../../config/navigation';
  */
 const Header = ({ onMenuClick }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuth();
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
@@ -45,8 +46,11 @@ const Header = ({ onMenuClick }) => {
     return name[0].toUpperCase();
   };
 
-  // Get role display name
+  // Get role display name (for class_head: "Teacher" when on /teacher, "Class Head" when on /class-head)
   const getRoleDisplay = () => {
+    if (user?.role === 'class_head' && location.pathname.startsWith('/teacher')) {
+      return roleDisplayNames.teacher;
+    }
     return roleDisplayNames[user?.role] || user?.role;
   };
 

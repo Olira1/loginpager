@@ -22,7 +22,13 @@ import {
   FileSpreadsheet,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { getStudents, getSubmissionChecklist, getLifecycleSemesters } from '../../services/classHeadService';
+import {
+  getStudents,
+  getSubmissionChecklist,
+  getLifecycleSemesters,
+  getTeacherSemesters,
+  getScope,
+} from '../../services/classHeadService';
 
 // ============ Reusable Components ============
 
@@ -113,6 +119,7 @@ const ClassHeadDashboard = () => {
   const [students, setStudents] = useState([]);
   const [submissions, setSubmissions] = useState(null);
   const [semesters, setSemesters] = useState([]);
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState('');
   const [selectedSemesterId, setSelectedSemesterId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -126,8 +133,13 @@ const ClassHeadDashboard = () => {
 
       // Fetch students and submission checklist in parallel
       const [studentsRes, checklistRes] = await Promise.all([
-        getStudents(),
-        selectedSemesterId ? getSubmissionChecklist({ semester_id: parseInt(selectedSemesterId, 10) }).catch(() => null) : Promise.resolve(null),
+        getStudents(selectedAcademicYearId ? { academic_year_id: parseInt(selectedAcademicYearId, 10) } : {}),
+        selectedSemesterId
+          ? getSubmissionChecklist({
+              semester_id: parseInt(selectedSemesterId, 10),
+              ...(selectedAcademicYearId ? { academic_year_id: parseInt(selectedAcademicYearId, 10) } : {})
+            }).catch(() => null)
+          : Promise.resolve(null),
       ]);
 
       // Set class info from students response
@@ -156,22 +168,52 @@ const ClassHeadDashboard = () => {
   useEffect(() => {
     const loadSemesters = async () => {
       try {
+        let items = [];
         const res = await getLifecycleSemesters();
         if (res.success) {
-          const items = res.data.items || [];
-          setSemesters(items);
-          if (items[0]) setSelectedSemesterId(String(items[0].id));
+          items = res.data.items || [];
+        }
+
+        // Fallback: if class-head semesters are empty, load teacher-scoped semesters
+        if (items.length === 0) {
+          const teacherRes = await getTeacherSemesters();
+          if (teacherRes.success) {
+            items = teacherRes.data.items || [];
+          }
+        }
+
+        setSemesters(items);
+        if (items[0]) {
+          const yearId = items[0].academic_year_id;
+          setSelectedSemesterId(String(items[0].id));
+          setSelectedAcademicYearId(String(yearId));
+          // Check scope: if teacher for this year, redirect to teacher portal
+          const scopeRes = await getScope(yearId);
+          if (scopeRes.success && scopeRes.data?.scope === 'teacher') {
+            navigate(`/teacher?academic_year_id=${yearId}`);
+          }
         }
       } catch (err) {
         console.error('Error loading semesters:', err);
       }
     };
     loadSemesters();
-  }, []);
+  }, [navigate]);
 
   useEffect(() => {
     fetchData();
-  }, [selectedSemesterId]);
+  }, [selectedSemesterId, selectedAcademicYearId]);
+
+  const academicYears = semesters.reduce((acc, sem) => {
+    if (!acc.some((y) => String(y.id) === String(sem.academic_year_id))) {
+      acc.push({ id: sem.academic_year_id, name: sem.academic_year_name });
+    }
+    return acc;
+  }, []);
+
+  const semestersForSelectedYear = semesters.filter(
+    (sem) => String(sem.academic_year_id) === String(selectedAcademicYearId)
+  );
 
   // Loading state
   if (loading) {
@@ -221,13 +263,42 @@ const ClassHeadDashboard = () => {
         </div>
         <div className="flex items-center gap-2">
           <select
+            value={selectedAcademicYearId}
+            onChange={async (e) => {
+              const yearId = e.target.value;
+              if (!yearId) return;
+              const yearIdNum = parseInt(yearId, 10);
+              try {
+                const scopeRes = await getScope(yearIdNum);
+                if (scopeRes.success && scopeRes.data?.scope === 'teacher') {
+                  navigate(`/teacher?academic_year_id=${yearId}`);
+                  return;
+                }
+              } catch (err) {
+                console.error('Scope check failed:', err);
+              }
+              setSelectedAcademicYearId(yearId);
+              const firstSemester = semesters.find((sem) => String(sem.academic_year_id) === String(yearId));
+              if (firstSemester) setSelectedSemesterId(String(firstSemester.id));
+            }}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+          >
+            {academicYears.length === 0 ? <option value="">No academic years</option> : null}
+            {academicYears.map((year) => (
+              <option key={year.id} value={year.id}>
+                {year.name || `Academic Year ${year.id}`}
+              </option>
+            ))}
+          </select>
+          <select
             value={selectedSemesterId}
             onChange={(e) => setSelectedSemesterId(e.target.value)}
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
           >
-            {semesters.map((sem) => (
+            {semestersForSelectedYear.length === 0 ? <option value="">No semesters</option> : null}
+            {semestersForSelectedYear.map((sem) => (
               <option key={sem.id} value={sem.id}>
-                {sem.academic_year_name} - {sem.name || `Semester ${sem.semester_number}`}
+                {(sem.academic_year_name || `Year ${sem.academic_year_id}`)} - {sem.name || `Semester ${sem.semester_number}`}
               </option>
             ))}
           </select>

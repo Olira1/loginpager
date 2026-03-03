@@ -1,7 +1,7 @@
 // Sidebar Component - Role-based navigation
 // Displays navigation items based on user role
 
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { GraduationCap, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getNavigationForRole } from '../../config/navigation';
@@ -14,7 +14,15 @@ import { getNavigationForRole } from '../../config/navigation';
  */
 const Sidebar = ({ isOpen, isMobile, onClose }) => {
   const { user } = useAuth();
-  const navItems = getNavigationForRole(user?.role);
+  const location = useLocation();
+
+  // For class_head: show teacher nav when on /teacher, class_head nav when on /class-head
+  const effectiveRole =
+    user?.role === 'class_head' && location.pathname.startsWith('/teacher')
+      ? 'teacher'
+      : user?.role;
+
+  const navItems = getNavigationForRole(effectiveRole);
 
   return (
     <>

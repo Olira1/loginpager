@@ -9,6 +9,8 @@ router.use(verifyToken);
 router.use(checkPasswordChanged);
 router.use(checkRole('teacher', 'class_head'));
 
+router.get('/scope', teacherController.getScope);
+
 // ==========================================
 // ASSIGNED CLASSES & SUBJECTS
 // ==========================================

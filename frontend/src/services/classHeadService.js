@@ -8,6 +8,18 @@ import api from './api';
 // CLASS HEAD SPECIFIC ENDPOINTS
 // ============================================================
 
+/**
+ * Get scope for selected academic year: class_head | teacher | null
+ * Used to switch portal (Teacher vs Class Head) based on year.
+ * @param {number} academicYearId - Academic year ID
+ */
+export const getScope = async (academicYearId) => {
+  const response = await api.get('/class-head/scope', {
+    params: { academic_year_id: academicYearId },
+  });
+  return response.data;
+};
+
 // ============ STUDENTS ============
 
 /**
@@ -314,6 +326,7 @@ export const getComputedAverages = async (classId, subjectId, params = {}) => {
 
 export default {
   // Class Head specific
+  getScope,
   getStudents,
   getStudentRankings,
   getSubmissionChecklist,

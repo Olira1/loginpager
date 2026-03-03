@@ -10,6 +10,7 @@ router.use(verifyToken);
 router.use(checkPasswordChanged);
 router.use(checkRole('class_head'));
 
+router.get('/scope', classHeadController.getScope);
 router.get('/semesters', classHeadController.listSemesters);
 
 // ==========================================

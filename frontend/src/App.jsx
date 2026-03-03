@@ -149,11 +149,11 @@ function App() {
             <Route path="profile" element={<Dashboard />} />
           </Route>
 
-          {/* Teacher Routes */}
+          {/* Teacher Routes (class_head can access when year scope is teacher) */}
           <Route
             path="/teacher"
             element={
-              <ProtectedRoute allowedRoles="teacher">
+              <ProtectedRoute allowedRoles={['teacher', 'class_head']}>
                 <DashboardLayout />
               </ProtectedRoute>
             }
