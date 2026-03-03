@@ -500,20 +500,28 @@ const AssessmentTypesPage = () => {
 
   // Handle assessment type save
   const handleSaveType = async (formData) => {
+    const payload = {
+      ...formData,
+      academic_year_id: selectedAcademicYearId ? parseInt(selectedAcademicYearId, 10) : undefined
+    };
     if (typeModal.mode === 'create') {
-      await createAssessmentType(formData);
+      await createAssessmentType(payload);
     } else {
-      await updateAssessmentType(typeModal.type.id, formData);
+      await updateAssessmentType(typeModal.type.id, payload);
     }
     fetchData();
   };
 
   // Handle template save
   const handleSaveTemplate = async (formData) => {
+    const payload = {
+      ...formData,
+      academic_year_id: selectedAcademicYearId ? parseInt(selectedAcademicYearId, 10) : undefined
+    };
     if (templateModal.mode === 'create') {
-      await createWeightTemplate(formData);
+      await createWeightTemplate(payload);
     } else {
-      await updateWeightTemplate(templateModal.template.id, formData);
+      await updateWeightTemplate(templateModal.template.id, payload);
     }
     fetchData();
   };

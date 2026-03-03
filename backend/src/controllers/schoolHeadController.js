@@ -882,13 +882,26 @@ const addSubjectToGrade = async (req, res) => {
   try {
     const schoolId = req.user.school_id;
     const { grade_id } = req.params;
-    const { name, code, credit_hours, is_required, description } = req.body;
+    const { name, code, credit_hours, is_required, description, academic_year_id } = req.body;
 
     if (!name) {
       return res.status(400).json({
         success: false,
         data: null,
         error: { code: 'VALIDATION_ERROR', message: 'Subject name is required.' }
+      });
+    }
+
+    let targetAcademicYearId = Number(academic_year_id);
+    if (!targetAcademicYearId) {
+      const currentYear = await getCurrentAcademicYear();
+      targetAcademicYearId = currentYear?.id || null;
+    }
+    if (!targetAcademicYearId) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'No active academic year found.' }
       });
     }
 
@@ -906,24 +919,25 @@ const addSubjectToGrade = async (req, res) => {
       });
     }
 
-    // Check if subject already exists for this school
+    // Check if subject already exists for this grade in this academic year
     const [existing] = await pool.query(
-      'SELECT id FROM subjects WHERE school_id = ? AND name = ?',
-      [schoolId, name]
+      `SELECT id FROM subjects
+       WHERE school_id = ? AND grade_id = ? AND academic_year_id = ? AND name = ?`,
+      [schoolId, grade_id, targetAcademicYearId, name]
     );
 
     if (existing.length > 0) {
       return res.status(409).json({
         success: false,
         data: null,
-        error: { code: 'CONFLICT', message: 'Subject already exists for this school.' }
+        error: { code: 'CONFLICT', message: 'Subject already exists for this grade and academic year.' }
       });
     }
 
-    // Create subject (school-wide in current schema)
+    // Create subject scoped to grade + academic year
     const [result] = await pool.query(
-      'INSERT INTO subjects (school_id, name) VALUES (?, ?)',
-      [schoolId, name]
+      'INSERT INTO subjects (school_id, grade_id, academic_year_id, name) VALUES (?, ?, ?, ?)',
+      [schoolId, grade_id, targetAcademicYearId, name]
     );
 
     // Return response matching API contract format
@@ -937,6 +951,7 @@ const addSubjectToGrade = async (req, res) => {
         is_required: is_required || false,
         description: description || null,
         grade_id: parseInt(grade_id),
+        academic_year_id: targetAcademicYearId,
         school_id: schoolId,
         is_active: true,
         created_at: new Date().toISOString()
@@ -963,6 +978,7 @@ const listSubjectsByGrade = async (req, res) => {
   try {
     const schoolId = req.user.school_id;
     const { grade_id } = req.params;
+    const { academic_year_id } = req.query;
 
     // Verify grade exists and belongs to this school
     const [grade] = await pool.query(
@@ -978,10 +994,25 @@ const listSubjectsByGrade = async (req, res) => {
       });
     }
 
-    // Return all subjects for this school (school-wide in current schema)
+    let targetAcademicYearId = Number(academic_year_id);
+    if (!targetAcademicYearId) {
+      const currentYear = await getCurrentAcademicYear();
+      targetAcademicYearId = currentYear?.id || null;
+    }
+    if (!targetAcademicYearId) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'No active academic year found.' }
+      });
+    }
+
+    // Return subjects only for this grade + academic year
     const [subjects] = await pool.query(
-      'SELECT * FROM subjects WHERE school_id = ? ORDER BY is_active DESC, name',
-      [schoolId]
+      `SELECT * FROM subjects
+       WHERE school_id = ? AND grade_id = ? AND academic_year_id = ?
+       ORDER BY is_active DESC, name`,
+      [schoolId, grade_id, targetAcademicYearId]
     );
 
     return res.status(200).json({
@@ -1047,7 +1078,7 @@ const updateSubjectInGrade = async (req, res) => {
   try {
     const { grade_id, subject_id } = req.params;
     const schoolId = req.user.school_id;
-    const { name, code, credit_hours, is_required, description } = req.body;
+    const { name, code, credit_hours, is_required, description, academic_year_id } = req.body;
 
     // Verify grade belongs to this school
     const [grade] = await pool.query(
@@ -1063,10 +1094,24 @@ const updateSubjectInGrade = async (req, res) => {
       });
     }
 
-    // Verify subject exists and belongs to this school
+    let targetAcademicYearId = Number(academic_year_id);
+    if (!targetAcademicYearId) {
+      const currentYear = await getCurrentAcademicYear();
+      targetAcademicYearId = currentYear?.id || null;
+    }
+    if (!targetAcademicYearId) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'No active academic year found.' }
+      });
+    }
+
+    // Verify subject exists and belongs to this school + grade + academic year scope
     const [existing] = await pool.query(
-      'SELECT * FROM subjects WHERE id = ? AND school_id = ?',
-      [subject_id, schoolId]
+      `SELECT * FROM subjects
+       WHERE id = ? AND school_id = ? AND grade_id = ? AND academic_year_id = ?`,
+      [subject_id, schoolId, grade_id, targetAcademicYearId]
     );
 
     if (existing.length === 0) {
@@ -1093,6 +1138,7 @@ const updateSubjectInGrade = async (req, res) => {
         is_active: !!existing[0].is_active,
         description: description || null,
         grade_id: parseInt(grade_id),
+        academic_year_id: targetAcademicYearId,
         updated: true
       },
       error: null
@@ -1162,6 +1208,7 @@ const removeSubjectFromGrade = async (req, res) => {
   try {
     const { grade_id, subject_id } = req.params;
     const schoolId = req.user.school_id;
+    const { academic_year_id } = req.query;
 
     // Verify grade belongs to this school
     const [grade] = await pool.query(
@@ -1177,10 +1224,24 @@ const removeSubjectFromGrade = async (req, res) => {
       });
     }
 
-    // Verify subject exists and belongs to this school
+    let targetAcademicYearId = Number(academic_year_id);
+    if (!targetAcademicYearId) {
+      const currentYear = await getCurrentAcademicYear();
+      targetAcademicYearId = currentYear?.id || null;
+    }
+    if (!targetAcademicYearId) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'No active academic year found.' }
+      });
+    }
+
+    // Verify subject exists and belongs to this school + grade + academic year scope
     const [existing] = await pool.query(
-      'SELECT * FROM subjects WHERE id = ? AND school_id = ?',
-      [subject_id, schoolId]
+      `SELECT * FROM subjects
+       WHERE id = ? AND school_id = ? AND grade_id = ? AND academic_year_id = ?`,
+      [subject_id, schoolId, grade_id, targetAcademicYearId]
     );
 
     if (existing.length === 0) {
@@ -1224,6 +1285,7 @@ const deactivateSubjectInGrade = async (req, res) => {
   try {
     const { grade_id, subject_id } = req.params;
     const schoolId = req.user.school_id;
+    const { academic_year_id } = req.query;
 
     const [grade] = await pool.query(
       'SELECT id FROM grades WHERE id = ? AND school_id = ?',
@@ -1237,9 +1299,23 @@ const deactivateSubjectInGrade = async (req, res) => {
       });
     }
 
+    let targetAcademicYearId = Number(academic_year_id);
+    if (!targetAcademicYearId) {
+      const currentYear = await getCurrentAcademicYear();
+      targetAcademicYearId = currentYear?.id || null;
+    }
+    if (!targetAcademicYearId) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'No active academic year found.' }
+      });
+    }
+
     const [existing] = await pool.query(
-      'SELECT id, is_active FROM subjects WHERE id = ? AND school_id = ?',
-      [subject_id, schoolId]
+      `SELECT id, is_active FROM subjects
+       WHERE id = ? AND school_id = ? AND grade_id = ? AND academic_year_id = ?`,
+      [subject_id, schoolId, grade_id, targetAcademicYearId]
     );
     if (existing.length === 0) {
       return res.status(404).json({
@@ -1281,6 +1357,7 @@ const activateSubjectInGrade = async (req, res) => {
   try {
     const { grade_id, subject_id } = req.params;
     const schoolId = req.user.school_id;
+    const { academic_year_id } = req.query;
 
     const [grade] = await pool.query(
       'SELECT id FROM grades WHERE id = ? AND school_id = ?',
@@ -1294,9 +1371,23 @@ const activateSubjectInGrade = async (req, res) => {
       });
     }
 
+    let targetAcademicYearId = Number(academic_year_id);
+    if (!targetAcademicYearId) {
+      const currentYear = await getCurrentAcademicYear();
+      targetAcademicYearId = currentYear?.id || null;
+    }
+    if (!targetAcademicYearId) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'No active academic year found.' }
+      });
+    }
+
     const [existing] = await pool.query(
-      'SELECT id, is_active FROM subjects WHERE id = ? AND school_id = ?',
-      [subject_id, schoolId]
+      `SELECT id, is_active FROM subjects
+       WHERE id = ? AND school_id = ? AND grade_id = ? AND academic_year_id = ?`,
+      [subject_id, schoolId, grade_id, targetAcademicYearId]
     );
     if (existing.length === 0) {
       return res.status(404).json({
@@ -1341,11 +1432,17 @@ const activateSubjectInGrade = async (req, res) => {
 const listAssessmentTypes = async (req, res) => {
   try {
     const schoolId = req.user.school_id;
+    const { academic_year_id } = req.query;
 
-    const [types] = await pool.query(
-      'SELECT * FROM assessment_types WHERE school_id = ? ORDER BY name',
-      [schoolId]
-    );
+    let query = 'SELECT * FROM assessment_types WHERE school_id = ?';
+    const params = [schoolId];
+    if (academic_year_id) {
+      query += ' AND academic_year_id = ?';
+      params.push(academic_year_id);
+    }
+    query += ' ORDER BY name';
+
+    const [types] = await pool.query(query, params);
 
     return res.status(200).json({
       success: true,
@@ -1369,7 +1466,7 @@ const listAssessmentTypes = async (req, res) => {
 const createAssessmentType = async (req, res) => {
   try {
     const schoolId = req.user.school_id;
-    const { name, default_weight_percent } = req.body;
+    const { name, default_weight_percent, academic_year_id } = req.body;
 
     if (!name) {
       return res.status(400).json({
@@ -1379,9 +1476,22 @@ const createAssessmentType = async (req, res) => {
       });
     }
 
+    let targetAcademicYearId = Number(academic_year_id);
+    if (!targetAcademicYearId) {
+      const currentYear = await getCurrentAcademicYear();
+      targetAcademicYearId = currentYear?.id || null;
+    }
+    if (!targetAcademicYearId) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'No active academic year found.' }
+      });
+    }
+
     const [existing] = await pool.query(
-      'SELECT id FROM assessment_types WHERE school_id = ? AND name = ?',
-      [schoolId, name]
+      'SELECT id FROM assessment_types WHERE school_id = ? AND academic_year_id = ? AND name = ?',
+      [schoolId, targetAcademicYearId, name]
     );
 
     if (existing.length > 0) {
@@ -1393,13 +1503,13 @@ const createAssessmentType = async (req, res) => {
     }
 
     const [result] = await pool.query(
-      'INSERT INTO assessment_types (school_id, name, default_weight_percent) VALUES (?, ?, ?)',
-      [schoolId, name, default_weight_percent || null]
+      'INSERT INTO assessment_types (school_id, academic_year_id, name, default_weight_percent) VALUES (?, ?, ?, ?)',
+      [schoolId, targetAcademicYearId, name, default_weight_percent || null]
     );
 
     return res.status(201).json({
       success: true,
-      data: { id: result.insertId, name, default_weight_percent },
+      data: { id: result.insertId, name, academic_year_id: targetAcademicYearId, default_weight_percent },
       error: null
     });
   } catch (error) {
@@ -1526,11 +1636,16 @@ const deleteAssessmentType = async (req, res) => {
 const listWeightTemplates = async (req, res) => {
   try {
     const schoolId = req.user.school_id;
+    const { academic_year_id } = req.query;
 
-    const [templates] = await pool.query(
-      'SELECT * FROM weight_templates WHERE school_id = ? ORDER BY is_default DESC, name',
-      [schoolId]
-    );
+    let query = 'SELECT * FROM weight_templates WHERE school_id = ?';
+    const params = [schoolId];
+    if (academic_year_id) {
+      query += ' AND academic_year_id = ?';
+      params.push(academic_year_id);
+    }
+    query += ' ORDER BY is_default DESC, name';
+    const [templates] = await pool.query(query, params);
 
     // Parse JSON weights for each template
     const items = templates.map(t => ({
@@ -1611,7 +1726,7 @@ const getWeightTemplate = async (req, res) => {
 const createWeightTemplate = async (req, res) => {
   try {
     const schoolId = req.user.school_id;
-    const { name, description, weights, is_default } = req.body;
+    const { name, description, weights, is_default, academic_year_id } = req.body;
 
     // Validate required fields
     if (!name || !weights || !Array.isArray(weights)) {
@@ -1619,6 +1734,19 @@ const createWeightTemplate = async (req, res) => {
         success: false,
         data: null,
         error: { code: 'VALIDATION_ERROR', message: 'Name and weights array are required.' }
+      });
+    }
+
+    let targetAcademicYearId = Number(academic_year_id);
+    if (!targetAcademicYearId) {
+      const currentYear = await getCurrentAcademicYear();
+      targetAcademicYearId = currentYear?.id || null;
+    }
+    if (!targetAcademicYearId) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'No active academic year found.' }
       });
     }
 
@@ -1635,14 +1763,14 @@ const createWeightTemplate = async (req, res) => {
     // If setting as default, unset any existing default
     if (is_default) {
       await pool.query(
-        'UPDATE weight_templates SET is_default = FALSE WHERE school_id = ?',
-        [schoolId]
+        'UPDATE weight_templates SET is_default = FALSE WHERE school_id = ? AND academic_year_id = ?',
+        [schoolId, targetAcademicYearId]
       );
     }
 
     const [result] = await pool.query(
-      'INSERT INTO weight_templates (school_id, name, description, weights, is_default) VALUES (?, ?, ?, ?, ?)',
-      [schoolId, name, description || null, JSON.stringify(weights), is_default ? 1 : 0]
+      'INSERT INTO weight_templates (school_id, academic_year_id, name, description, weights, is_default) VALUES (?, ?, ?, ?, ?, ?)',
+      [schoolId, targetAcademicYearId, name, description || null, JSON.stringify(weights), is_default ? 1 : 0]
     );
 
     return res.status(201).json({
@@ -1650,6 +1778,7 @@ const createWeightTemplate = async (req, res) => {
       data: {
         id: result.insertId,
         name,
+        academic_year_id: targetAcademicYearId,
         description,
         weights,
         is_default: !!is_default,
@@ -1706,8 +1835,8 @@ const updateWeightTemplate = async (req, res) => {
     // If setting as default, unset others
     if (is_default) {
       await pool.query(
-        'UPDATE weight_templates SET is_default = FALSE WHERE school_id = ? AND id != ?',
-        [schoolId, template_id]
+        'UPDATE weight_templates SET is_default = FALSE WHERE school_id = ? AND academic_year_id = ? AND id != ?',
+        [schoolId, existing[0].academic_year_id || null, template_id]
       );
     }
 
@@ -1885,7 +2014,7 @@ const createTeachingAssignment = async (req, res) => {
 
     // Verify subject belongs to school and is active
     const [subject] = await pool.query(
-      'SELECT id, is_active FROM subjects WHERE id = ? AND school_id = ?',
+      'SELECT id, is_active, grade_id, academic_year_id FROM subjects WHERE id = ? AND school_id = ?',
       [subject_id, schoolId]
     );
     if (subject.length === 0) {
@@ -1914,6 +2043,22 @@ const createTeachingAssignment = async (req, res) => {
         success: false,
         data: null,
         error: { code: 'VALIDATION_ERROR', message: 'No active academic year found.' }
+      });
+    }
+
+    // If subject is scoped to grade/year, enforce exact match with assignment context
+    if (subject[0].grade_id && Number(subject[0].grade_id) !== Number(cls[0].grade_id)) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'Selected subject does not belong to the selected grade.' }
+      });
+    }
+    if (subject[0].academic_year_id && Number(subject[0].academic_year_id) !== Number(targetAcademicYearId)) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'Selected subject does not belong to the selected academic year.' }
       });
     }
 
@@ -2035,7 +2180,7 @@ const updateTeachingAssignment = async (req, res) => {
 
     // Verify subject belongs to school
     const [subj] = await pool.query(
-      'SELECT id FROM subjects WHERE id = ? AND school_id = ? AND is_active = true',
+      'SELECT id, grade_id, academic_year_id FROM subjects WHERE id = ? AND school_id = ? AND is_active = true',
       [newSubjectId, schoolId]
     );
     if (subj.length === 0) {
@@ -2044,6 +2189,28 @@ const updateTeachingAssignment = async (req, res) => {
         data: null,
         error: { code: 'VALIDATION_ERROR', message: 'Invalid or inactive subject.' }
       });
+    }
+
+    // Load selected class details for scope validation
+    const [selectedClass] = await pool.query(
+      'SELECT id, grade_id, academic_year_id FROM classes WHERE id = ?',
+      [newClassId]
+    );
+    if (selectedClass.length > 0) {
+      if (subj[0].grade_id && Number(subj[0].grade_id) !== Number(selectedClass[0].grade_id)) {
+        return res.status(400).json({
+          success: false,
+          data: null,
+          error: { code: 'VALIDATION_ERROR', message: 'Selected subject does not belong to the selected grade.' }
+        });
+      }
+      if (subj[0].academic_year_id && Number(subj[0].academic_year_id) !== Number(assignment[0].academic_year_id)) {
+        return res.status(400).json({
+          success: false,
+          data: null,
+          error: { code: 'VALIDATION_ERROR', message: 'Selected subject does not belong to the assignment academic year.' }
+        });
+      }
     }
 
     // Check for duplicate assignment

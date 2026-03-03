@@ -165,6 +165,11 @@ export const navigationConfig = {
       icon: FileText,
     },
     {
+      name: 'Assessment Weights',
+      path: '/class-head/weights',
+      icon: Settings,
+    },
+    {
       name: 'Review Submissions',
       path: '/class-head/submissions',
       icon: CheckSquare,

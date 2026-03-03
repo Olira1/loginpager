@@ -203,8 +203,8 @@ export const reopenSemester = async (semesterId, data = {}) => {
  * Get subjects for a grade
  * @param {number} gradeId - Grade ID
  */
-export const getSubjects = async (gradeId) => {
-  const response = await api.get(`/school/grades/${gradeId}/subjects`);
+export const getSubjects = async (gradeId, params = {}) => {
+  const response = await api.get(`/school/grades/${gradeId}/subjects`, { params });
   return response.data;
 };
 
@@ -242,8 +242,8 @@ export const updateSubject = async (gradeId, subjectId, data) => {
  * @param {number} gradeId - Grade ID
  * @param {number} subjectId - Subject ID
  */
-export const removeSubject = async (gradeId, subjectId) => {
-  const response = await api.delete(`/school/grades/${gradeId}/subjects/${subjectId}`);
+export const removeSubject = async (gradeId, subjectId, params = {}) => {
+  const response = await api.delete(`/school/grades/${gradeId}/subjects/${subjectId}`, { params });
   return response.data;
 };
 
@@ -252,8 +252,8 @@ export const removeSubject = async (gradeId, subjectId) => {
  * @param {number} gradeId - Grade ID
  * @param {number} subjectId - Subject ID
  */
-export const deactivateSubject = async (gradeId, subjectId) => {
-  const response = await api.patch(`/school/grades/${gradeId}/subjects/${subjectId}/deactivate`);
+export const deactivateSubject = async (gradeId, subjectId, params = {}) => {
+  const response = await api.patch(`/school/grades/${gradeId}/subjects/${subjectId}/deactivate`, {}, { params });
   return response.data;
 };
 
@@ -262,8 +262,8 @@ export const deactivateSubject = async (gradeId, subjectId) => {
  * @param {number} gradeId - Grade ID
  * @param {number} subjectId - Subject ID
  */
-export const activateSubject = async (gradeId, subjectId) => {
-  const response = await api.patch(`/school/grades/${gradeId}/subjects/${subjectId}/activate`);
+export const activateSubject = async (gradeId, subjectId, params = {}) => {
+  const response = await api.patch(`/school/grades/${gradeId}/subjects/${subjectId}/activate`, {}, { params });
   return response.data;
 };
 

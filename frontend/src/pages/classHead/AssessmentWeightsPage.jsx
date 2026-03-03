@@ -1,7 +1,3 @@
-// Assessment Weights Page - Set weights per class/subject/semester
-// Maps to: GET /teacher/assessment-weights, GET /teacher/assessment-weights/suggestions,
-//          POST /teacher/assessment-weights
-
 import { useState, useEffect } from 'react';
 import {
   Settings, AlertCircle, RefreshCw, CheckCircle2, Info,
@@ -16,7 +12,7 @@ import {
   getWeightSuggestions,
   setAssessmentWeights,
   createTeacherAssessmentType
-} from '../../services/teacherService';
+} from '../../services/classHeadService';
 
 const DEFAULT_SEMESTERS = [
   { id: 5, name: 'First Semester' },
@@ -25,8 +21,6 @@ const DEFAULT_SEMESTERS = [
 
 const AssessmentWeightsPage = () => {
   const navigate = useNavigate();
-
-  // Selection state
   const [classes, setClasses] = useState([]);
   const [academicYears, setAcademicYears] = useState([]);
   const [selectedAcademicYearId, setSelectedAcademicYearId] = useState('');
@@ -35,13 +29,9 @@ const AssessmentWeightsPage = () => {
   const [selectedSemester, setSelectedSemester] = useState('');
   const [semesters, setSemesters] = useState([]);
   const [availableSubjects, setAvailableSubjects] = useState([]);
-
-  // Weights state
   const [weights, setWeights] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
   const [source, setSource] = useState('');
-
-  // UI state
   const [loading, setLoading] = useState(true);
   const [weightsLoading, setWeightsLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -60,8 +50,7 @@ const AssessmentWeightsPage = () => {
           if (current) setSelectedAcademicYearId(String(current.id));
         }
       } catch (err) {
-        console.error('Load teacher years error:', err);
-        setAcademicYears([]);
+        console.error('Load class head years error:', err);
       }
     };
     loadYears();
@@ -88,26 +77,21 @@ const AssessmentWeightsPage = () => {
           }
         }
       } catch (err) {
-        console.error('Load teacher semesters error:', err);
-        setSemesters(DEFAULT_SEMESTERS);
-        setSelectedSemester(String(DEFAULT_SEMESTERS[0].id));
+        console.error('Load class head semesters error:', err);
       }
     };
     loadSemesters();
   }, [selectedAcademicYearId]);
 
-  // When class changes, update available subjects
   useEffect(() => {
-    if (selectedClass) {
-      const cls = classes.find(c => c.class_id === parseInt(selectedClass));
-      setAvailableSubjects(cls?.subjects || []);
-      setSelectedSubject('');
-      setWeights([]);
-      setSuggestions([]);
-    }
+    if (!selectedClass) return;
+    const cls = classes.find((c) => c.class_id === parseInt(selectedClass, 10));
+    setAvailableSubjects(cls?.subjects || []);
+    setSelectedSubject('');
+    setWeights([]);
+    setSuggestions([]);
   }, [selectedClass, classes]);
 
-  // When all three selectors are filled, fetch weights
   useEffect(() => {
     if (selectedClass && selectedSubject && selectedSemester) {
       fetchWeights();
@@ -133,13 +117,7 @@ const AssessmentWeightsPage = () => {
     setError(null);
     setSuccess(null);
     try {
-      const params = {
-        class_id: selectedClass,
-        subject_id: selectedSubject,
-        semester_id: selectedSemester
-      };
-
-      // Fetch current weights and suggestions in parallel
+      const params = { class_id: selectedClass, subject_id: selectedSubject, semester_id: selectedSemester };
       const [weightsRes, suggestionsRes] = await Promise.all([
         getAssessmentWeights(params).catch(() => null),
         getWeightSuggestions(params).catch(() => null)
@@ -150,21 +128,19 @@ const AssessmentWeightsPage = () => {
       }
 
       if (weightsRes?.success && weightsRes.data?.weights?.length > 0) {
-        setWeights(weightsRes.data.weights.map(w => ({
+        setWeights(weightsRes.data.weights.map((w) => ({
           assessment_type_id: w.assessment_type_id,
           name: w.assessment_type_name || w.name || `Type ${w.assessment_type_id}`,
           weight_percent: parseFloat(w.weight_percent) || 0
         })));
         setSource(weightsRes.data.source || 'teacher_defined');
       } else if (suggestionsRes?.success) {
-        // Use suggestions as default weights (may come from weight_template or assessment_type defaults)
         const suggestedWeights = suggestionsRes.data?.suggested_weights || suggestionsRes.data?.suggestions || [];
-        setWeights(suggestedWeights.map(s => ({
+        setWeights(suggestedWeights.map((s) => ({
           assessment_type_id: s.assessment_type_id,
           name: s.assessment_type_name || s.name || `Type ${s.assessment_type_id}`,
           weight_percent: parseFloat(s.weight_percent || s.default_weight_percent) || 0
         })));
-        // Indicate the source: weight_template or default
         setSource(suggestionsRes.data?.source || 'default');
       }
     } catch (err) {
@@ -218,21 +194,16 @@ const AssessmentWeightsPage = () => {
     setError(null);
   };
 
-  // Re-fetch the latest suggestions from the API (not cached) so school head edits are reflected
   const loadSuggestions = async () => {
     setError(null);
     setSuccess(null);
     try {
-      const params = {
-        class_id: selectedClass,
-        subject_id: selectedSubject,
-        semester_id: selectedSemester
-      };
+      const params = { class_id: selectedClass, subject_id: selectedSubject, semester_id: selectedSemester };
       const res = await getWeightSuggestions(params);
       if (res?.success) {
         const freshSuggestions = res.data?.suggested_weights || [];
         setSuggestions(freshSuggestions);
-        setWeights(freshSuggestions.map(s => ({
+        setWeights(freshSuggestions.map((s) => ({
           assessment_type_id: s.assessment_type_id,
           name: s.assessment_type_name || s.name || `Type ${s.assessment_type_id}`,
           weight_percent: parseFloat(s.weight_percent || s.default_weight_percent) || 0
@@ -240,15 +211,7 @@ const AssessmentWeightsPage = () => {
         setSource(res.data?.source || 'default');
       }
     } catch (err) {
-      // Fall back to cached suggestions
-      if (suggestions.length > 0) {
-        setWeights(suggestions.map(s => ({
-          assessment_type_id: s.assessment_type_id,
-          name: s.assessment_type_name || s.name || `Type ${s.assessment_type_id}`,
-          weight_percent: parseFloat(s.weight_percent || s.default_weight_percent) || 0
-        })));
-        setSource('default');
-      }
+      console.error('Load class head suggestions error:', err);
     }
   };
 
@@ -256,24 +219,22 @@ const AssessmentWeightsPage = () => {
 
   const handleSave = async () => {
     if (Math.abs(totalWeight - 100) > 0.01) {
-      setError('Weights must sum to exactly 100%. Currently: ' + totalWeight.toFixed(2) + '%');
+      setError(`Weights must sum to exactly 100%. Currently: ${totalWeight.toFixed(2)}%`);
       return;
     }
-
     setSaving(true);
     setError(null);
     setSuccess(null);
     try {
       const response = await setAssessmentWeights({
-        class_id: parseInt(selectedClass),
-        subject_id: parseInt(selectedSubject),
-        semester_id: parseInt(selectedSemester),
-        weights: weights.map(w => ({
+        class_id: parseInt(selectedClass, 10),
+        subject_id: parseInt(selectedSubject, 10),
+        semester_id: parseInt(selectedSemester, 10),
+        weights: weights.map((w) => ({
           assessment_type_id: w.assessment_type_id,
           weight_percent: w.weight_percent
         }))
       });
-
       if (response.success) {
         setSuccess('Assessment weights saved successfully!');
         setSource('teacher_defined');
@@ -296,109 +257,61 @@ const AssessmentWeightsPage = () => {
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Assessment Setup</h1>
         <p className="text-gray-500 mt-1">Define custom assessment breakdowns and weights for your subjects.</p>
       </div>
 
-      {/* Class / Subject / Semester Selectors */}
       <div className="bg-white border border-gray-200 rounded-xl p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Select Class, Subject & Semester</h2>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Academic Year</label>
-            <select
-              value={selectedAcademicYearId}
-              onChange={(e) => setSelectedAcademicYearId(e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-            >
+            <select value={selectedAcademicYearId} onChange={(e) => setSelectedAcademicYearId(e.target.value)} className="w-full px-3 py-2.5 border border-gray-300 rounded-lg">
               <option value="">All Years</option>
-              {academicYears.map((year) => (
-                <option key={year.id} value={year.id}>{year.name}</option>
-              ))}
+              {academicYears.map((year) => <option key={year.id} value={year.id}>{year.name}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Class</label>
-            <select
-              value={selectedClass}
-              onChange={(e) => setSelectedClass(e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-            >
+            <select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)} className="w-full px-3 py-2.5 border border-gray-300 rounded-lg">
               <option value="">Select Class</option>
-              {classes.map(cls => (
-                <option key={cls.class_id} value={cls.class_id}>
-                  {cls.class_name} ({cls.grade?.name})
-                </option>
-              ))}
+              {classes.map((cls) => <option key={cls.class_id} value={cls.class_id}>{cls.class_name} ({cls.grade?.name})</option>)}
             </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Subject</label>
-            <select
-              value={selectedSubject}
-              onChange={(e) => setSelectedSubject(e.target.value)}
-              disabled={!selectedClass}
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100"
-            >
+            <select value={selectedSubject} onChange={(e) => setSelectedSubject(e.target.value)} disabled={!selectedClass} className="w-full px-3 py-2.5 border border-gray-300 rounded-lg disabled:bg-gray-100">
               <option value="">Select Subject</option>
-              {availableSubjects.map(sub => (
-                <option key={sub.id} value={sub.id}>{sub.name}</option>
-              ))}
+              {availableSubjects.map((sub) => <option key={sub.id} value={sub.id}>{sub.name}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Semester</label>
-            <select
-              value={selectedSemester}
-              onChange={(e) => setSelectedSemester(e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-            >
+            <select value={selectedSemester} onChange={(e) => setSelectedSemester(e.target.value)} className="w-full px-3 py-2.5 border border-gray-300 rounded-lg">
               <option value="">Select Semester</option>
-              {semesters.map(s => (
-                <option key={s.id} value={s.id}>{s.academic_year_name ? `${s.academic_year_name} - ${s.name}` : s.name}</option>
-              ))}
+              {semesters.map((s) => <option key={s.id} value={s.id}>{s.academic_year_name ? `${s.academic_year_name} - ${s.name}` : s.name}</option>)}
             </select>
           </div>
         </div>
       </div>
 
-      {/* Alerts */}
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-3 text-red-700">
-          <AlertCircle className="w-5 h-5 flex-shrink-0" />
-          <span className="text-sm">{error}</span>
-        </div>
-      )}
+      {error && <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-3 text-red-700"><AlertCircle className="w-5 h-5" /><span className="text-sm">{error}</span></div>}
       {success && (
         <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center justify-between text-green-700">
-          <div className="flex items-center gap-3">
-            <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
-            <span className="text-sm">{success}</span>
-          </div>
-          <button
-            onClick={() => navigate('/teacher/grades')}
-            className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"
-          >
+          <div className="flex items-center gap-3"><CheckCircle2 className="w-5 h-5" /><span className="text-sm">{success}</span></div>
+          <button onClick={() => navigate('/class-head/grades')} className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">
             Go to Grade Entry <ArrowRight className="w-4 h-4" />
           </button>
         </div>
       )}
 
-      {/* Weights Editor */}
       {weightsLoading ? (
-        <div className="flex items-center justify-center h-40">
-          <RefreshCw className="w-6 h-6 text-indigo-500 animate-spin" />
-        </div>
+        <div className="flex items-center justify-center h-40"><RefreshCw className="w-6 h-6 text-indigo-500 animate-spin" /></div>
       ) : selectedClass && selectedSubject && selectedSemester ? (
         <>
-          {/* School Head Suggestion Link - always re-fetch latest from API */}
           {source === 'teacher_defined' && (
-            <button
-              onClick={loadSuggestions}
-              className="flex items-center gap-2 text-indigo-600 hover:text-indigo-700 text-sm font-medium"
-            >
+            <button onClick={loadSuggestions} className="flex items-center gap-2 text-indigo-600 hover:text-indigo-700 text-sm font-medium">
               <Lightbulb className="w-4 h-4" />
               Load Latest School Head Weight Template
             </button>
@@ -407,127 +320,70 @@ const AssessmentWeightsPage = () => {
           {source && (
             <div className="flex items-center gap-2 text-sm text-gray-500">
               <Info className="w-4 h-4" />
-              <span>
-                Source: {source === 'teacher_defined'
-                  ? 'Custom (set by you)'
-                  : source === 'weight_template'
-                    ? 'Weight Template (from School Head)'
-                    : 'Default (School Head suggestions)'}
-              </span>
+              <span>Source: {source === 'teacher_defined' ? 'Custom (set by you)' : source === 'weight_template' ? 'Weight Template (from School Head)' : 'Default (School Head suggestions)'}</span>
             </div>
           )}
 
-          {/* Weight Categories */}
           <div className="bg-white border border-gray-200 rounded-xl p-6">
             <div className="flex flex-col md:flex-row md:items-end gap-3 mb-4">
               <div className="flex-1">
                 <h2 className="text-lg font-semibold text-gray-900">Assessment Categories</h2>
-                <p className="text-xs text-gray-500 mt-1">Teachers can add/remove assessment types and tune weights.</p>
+                <p className="text-xs text-gray-500 mt-1">Class heads can add/remove assessment types and tune weights.</p>
               </div>
               <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={newAssessmentTypeName}
-                  onChange={(e) => setNewAssessmentTypeName(e.target.value)}
-                  placeholder="New assessment type (e.g., Oral)"
-                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-64"
-                />
-                <button
-                  onClick={handleAddAssessmentType}
-                  disabled={saving}
-                  className="inline-flex items-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50"
-                >
+                <input type="text" value={newAssessmentTypeName} onChange={(e) => setNewAssessmentTypeName(e.target.value)} placeholder="New assessment type (e.g., Oral)" className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-64" />
+                <button onClick={handleAddAssessmentType} disabled={saving} className="inline-flex items-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50">
                   <Plus className="w-4 h-4" />
                   Add
                 </button>
               </div>
             </div>
-            {weights.length === 0 ? (
-              <div className="text-center py-8 text-gray-400">
-                <Settings className="w-10 h-10 mx-auto mb-3" />
-                <p>No assessment types defined. Contact your School Head.</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {weights.map((w, index) => (
-                  <div key={w.assessment_type_id} className="border border-gray-200 rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="font-medium text-gray-900 flex items-center gap-2">
-                        <Settings className="w-4 h-4 text-gray-400" />
-                        {w.name}
-                      </h3>
-                      <button
-                        onClick={() => handleDeleteAssessmentType(w.assessment_type_id)}
-                        disabled={saving}
-                        className="p-1.5 rounded text-red-600 hover:bg-red-50 disabled:opacity-50"
-                        title="Delete assessment type"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <span className="text-sm text-gray-500 w-20">Weight (%):</span>
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        step="1"
-                        value={w.weight_percent || 0}
-                        onChange={(e) => handleWeightChange(index, e.target.value)}
-                        className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                      />
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={w.weight_percent || 0}
-                        onChange={(e) => handleWeightChange(index, e.target.value)}
-                        className="w-20 px-3 py-2 border border-gray-300 rounded-lg text-center text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                      />
-                    </div>
+
+            <div className="space-y-4">
+              {weights.map((w, index) => (
+                <div key={w.assessment_type_id} className="border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-medium text-gray-900 flex items-center gap-2">
+                      <Settings className="w-4 h-4 text-gray-400" />
+                      {w.name}
+                    </h3>
+                    <button onClick={() => handleDeleteAssessmentType(w.assessment_type_id)} disabled={saving} className="p-1.5 rounded text-red-600 hover:bg-red-50 disabled:opacity-50" title="Remove assessment type from this setup">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
-                ))}
-              </div>
-            )}
+                  <div className="flex items-center gap-4">
+                    <span className="text-sm text-gray-500 w-20">Weight (%):</span>
+                    <input type="range" min="0" max="100" step="1" value={w.weight_percent || 0} onChange={(e) => handleWeightChange(index, e.target.value)} className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600" />
+                    <input type="number" min="0" max="100" value={w.weight_percent || 0} onChange={(e) => handleWeightChange(index, e.target.value)} className="w-20 px-3 py-2 border border-gray-300 rounded-lg text-center text-sm" />
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
-          {/* Summary & Actions */}
-          {weights.length > 0 && (
-            <div className="bg-white border border-gray-200 rounded-xl p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Summary & Actions</h2>
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-lg font-bold text-gray-900">
-                    Total Assessment Weight:{' '}
-                    <span className={Math.abs(totalWeight - 100) < 0.01 ? 'text-green-600' : 'text-red-600'}>
-                      {totalWeight.toFixed(1)}%
-                    </span>
+          <div className="bg-white border border-gray-200 rounded-xl p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Summary & Actions</h2>
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-lg font-bold text-gray-900">
+                  Total Assessment Weight:{' '}
+                  <span className={Math.abs(totalWeight - 100) < 0.01 ? 'text-green-600' : 'text-red-600'}>
+                    {totalWeight.toFixed(1)}%
                   </span>
-                  {Math.abs(totalWeight - 100) >= 0.01 && (
-                    <p className="text-sm text-red-500 mt-1">Weights must sum to 100%</p>
-                  )}
-                </div>
-                <div className="flex gap-3">
-                  <button
-                    onClick={loadSuggestions}
-                    disabled={suggestions.length === 0}
-                    className="flex items-center gap-2 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                    Reset to Default
-                  </button>
-                  <button
-                    onClick={handleSave}
-                    disabled={saving || Math.abs(totalWeight - 100) >= 0.01}
-                    className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                    {saving ? 'Saving...' : 'Save Weights'}
-                  </button>
-                </div>
+                </span>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={loadSuggestions} disabled={suggestions.length === 0} className="flex items-center gap-2 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                  <RotateCcw className="w-4 h-4" />
+                  Reset to Default
+                </button>
+                <button onClick={handleSave} disabled={saving || Math.abs(totalWeight - 100) >= 0.01} className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
+                  {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  {saving ? 'Saving...' : 'Save Weights'}
+                </button>
               </div>
             </div>
-          )}
+          </div>
         </>
       ) : (
         <div className="bg-white border border-gray-200 rounded-xl p-12 text-center text-gray-400">

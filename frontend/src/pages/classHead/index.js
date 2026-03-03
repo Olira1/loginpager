@@ -4,6 +4,7 @@
 export { default as ClassHeadDashboard } from './ClassHeadDashboard';
 export { default as StudentsPage } from './StudentsPage';
 export { default as GradeEntryPage } from './GradeEntryPage';
+export { default as AssessmentWeightsPage } from './AssessmentWeightsPage';
 export { default as SubmissionsPage } from './SubmissionsPage';
 export { default as CompilePublishPage } from './CompilePublishPage';
 export { default as ClassSnapshotPage } from './ClassSnapshotPage';

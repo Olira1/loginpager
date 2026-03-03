@@ -162,6 +162,16 @@ export const getAssignedClasses = async (params = {}) => {
   return response.data;
 };
 
+export const getTeacherAcademicYears = async () => {
+  const response = await api.get('/teacher/academic-years');
+  return response.data;
+};
+
+export const getTeacherSemesters = async (params = {}) => {
+  const response = await api.get('/teacher/semesters', { params });
+  return response.data;
+};
+
 /**
  * Get subjects assigned to the class head (as a teacher)
  * @param {Object} params - Query parameters (academic_year_id)
@@ -197,6 +207,11 @@ export const getAssessmentWeights = async (params) => {
  */
 export const setAssessmentWeights = async (data) => {
   const response = await api.post('/teacher/assessment-weights', data);
+  return response.data;
+};
+
+export const createTeacherAssessmentType = async (data) => {
+  const response = await api.post('/teacher/assessment-types', data);
   return response.data;
 };
 
@@ -315,10 +330,13 @@ export default {
   sendRosterToStoreHouse,
   // Teacher-inherited
   getAssignedClasses,
+  getTeacherAcademicYears,
+  getTeacherSemesters,
   getAssignedSubjects,
   getWeightSuggestions,
   getAssessmentWeights,
   setAssessmentWeights,
+  createTeacherAssessmentType,
   getClassStudents,
   listStudentGrades,
   enterGrade,

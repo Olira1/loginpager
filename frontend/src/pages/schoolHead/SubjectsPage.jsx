@@ -350,9 +350,10 @@ const SubjectsPage = () => {
 
   // Fetch subjects for a grade
   const fetchSubjects = async (gradeId) => {
+    if (!selectedAcademicYearId) return;
     try {
       setLoadingSubjects(prev => ({ ...prev, [gradeId]: true }));
-      const response = await getSubjects(gradeId);
+      const response = await getSubjects(gradeId, { academic_year_id: selectedAcademicYearId });
       if (response.success) {
         setSubjectsMap(prev => ({ ...prev, [gradeId]: response.data.items || [] }));
       }
@@ -388,10 +389,14 @@ const SubjectsPage = () => {
 
   // Handle subject save
   const handleSaveSubject = async (formData) => {
+    const payload = {
+      ...formData,
+      academic_year_id: selectedAcademicYearId ? parseInt(selectedAcademicYearId, 10) : undefined
+    };
     if (subjectModal.mode === 'create') {
-      await addSubject(subjectModal.grade.id, formData);
+      await addSubject(subjectModal.grade.id, payload);
     } else {
-      await updateSubject(subjectModal.grade.id, subjectModal.subject.id, formData);
+      await updateSubject(subjectModal.grade.id, subjectModal.subject.id, payload);
     }
     fetchSubjects(subjectModal.grade.id);
   };
@@ -401,9 +406,9 @@ const SubjectsPage = () => {
     setDeleteError(null);
     try {
       if (subject.is_active) {
-        await deactivateSubject(grade.id, subject.id);
+        await deactivateSubject(grade.id, subject.id, { academic_year_id: selectedAcademicYearId });
       } else {
-        await activateSubject(grade.id, subject.id);
+        await activateSubject(grade.id, subject.id, { academic_year_id: selectedAcademicYearId });
       }
       fetchSubjects(grade.id);
     } catch (err) {
@@ -419,7 +424,7 @@ const SubjectsPage = () => {
     setActionLoading(true);
     setDeleteError(null);
     try {
-      await removeSubject(deleteModal.grade.id, deleteModal.subject.id);
+      await removeSubject(deleteModal.grade.id, deleteModal.subject.id, { academic_year_id: selectedAcademicYearId });
       fetchSubjects(deleteModal.grade.id);
       setDeleteModal({ open: false, grade: null, subject: null });
     } catch (err) {

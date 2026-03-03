@@ -47,6 +47,7 @@ import {
   ClassHeadDashboard,
   StudentsPage as ClassHeadStudentsPage,
   GradeEntryPage,
+  AssessmentWeightsPage as ClassHeadAssessmentWeightsPage,
   SubmissionsPage,
   CompilePublishPage,
   ClassSnapshotPage,
@@ -178,6 +179,7 @@ function App() {
             <Route index element={<ClassHeadDashboard />} />
             <Route path="students" element={<ClassHeadStudentsPage />} />
             <Route path="grades" element={<GradeEntryPage />} />
+            <Route path="weights" element={<ClassHeadAssessmentWeightsPage />} />
             <Route path="submissions" element={<SubmissionsPage />} />
             <Route path="compile" element={<CompilePublishPage />} />
             <Route path="snapshot" element={<ClassSnapshotPage />} />

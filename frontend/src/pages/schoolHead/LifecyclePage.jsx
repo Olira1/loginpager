@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarClock, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import {
+  CalendarClock,
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+  Lock,
+  LockOpen,
+  Send,
+  CircleDot
+} from 'lucide-react';
 import {
   getLifecycleAcademicYears,
   getLifecycleSemesters,
@@ -67,6 +76,18 @@ const LifecyclePage = () => {
     }));
   }, [semesters]);
 
+  const selectedSemester = useMemo(
+    () => semesters.find((s) => String(s.id) === String(semesterForm.semester_id)) || null,
+    [semesters, semesterForm.semester_id]
+  );
+
+  const getLifecycleMeta = (status) => {
+    if (status === 'submission_closed') return { label: 'Submission Closed', icon: Send, tone: 'text-amber-700 bg-amber-50 border-amber-200' };
+    if (status === 'locked') return { label: 'Locked', icon: Lock, tone: 'text-red-700 bg-red-50 border-red-200' };
+    if (status === 'published') return { label: 'Published', icon: CheckCircle2, tone: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
+    return { label: 'Open', icon: LockOpen, tone: 'text-blue-700 bg-blue-50 border-blue-200' };
+  };
+
   const run = async (fn, payload, successMsg) => {
     try {
       setLoading(true);
@@ -74,6 +95,7 @@ const LifecyclePage = () => {
       if (!res.success) throw new Error(res.error?.message || 'Operation failed.');
       setSuccess(successMsg);
       setError('');
+      await loadMeta();
     } catch (err) {
       setError(err.message || 'Operation failed.');
       setSuccess('');
@@ -213,11 +235,26 @@ const LifecyclePage = () => {
             className="px-3 py-2 border rounded-lg"
           />
         </div>
+        {selectedSemester ? (
+          <div className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm ${getLifecycleMeta(selectedSemester.lifecycle_status).tone}`}>
+            {(() => {
+              const Icon = getLifecycleMeta(selectedSemester.lifecycle_status).icon;
+              return <Icon className="w-4 h-4" />;
+            })()}
+            <span className="font-medium">Current status:</span>
+            <span>{getLifecycleMeta(selectedSemester.lifecycle_status).label}</span>
+          </div>
+        ) : (
+          <div className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm text-gray-600 bg-gray-50 border-gray-200">
+            <CircleDot className="w-4 h-4" />
+            <span>Select a semester to view its current lifecycle status.</span>
+          </div>
+        )}
         <div className="flex flex-wrap gap-2">
-          <button onClick={() => handleSemesterAction('open')} disabled={loading} className="px-3 py-2 border rounded-lg text-sm hover:bg-gray-50">Open</button>
-          <button onClick={() => handleSemesterAction('close')} disabled={loading} className="px-3 py-2 border rounded-lg text-sm hover:bg-gray-50">Close Submission</button>
-          <button onClick={() => handleSemesterAction('lock')} disabled={loading} className="px-3 py-2 border rounded-lg text-sm hover:bg-gray-50">Lock</button>
-          <button onClick={() => handleSemesterAction('reopen')} disabled={loading} className="px-3 py-2 border rounded-lg text-sm hover:bg-gray-50">Reopen</button>
+          <button onClick={() => handleSemesterAction('open')} disabled={loading} className="px-3 py-2 border rounded-lg text-sm hover:bg-gray-50 inline-flex items-center gap-1.5"><LockOpen className="w-4 h-4" />Open</button>
+          <button onClick={() => handleSemesterAction('close')} disabled={loading} className="px-3 py-2 border rounded-lg text-sm hover:bg-gray-50 inline-flex items-center gap-1.5"><Send className="w-4 h-4" />Close Submission</button>
+          <button onClick={() => handleSemesterAction('lock')} disabled={loading} className="px-3 py-2 border rounded-lg text-sm hover:bg-gray-50 inline-flex items-center gap-1.5"><Lock className="w-4 h-4" />Lock</button>
+          <button onClick={() => handleSemesterAction('reopen')} disabled={loading} className="px-3 py-2 border rounded-lg text-sm hover:bg-gray-50 inline-flex items-center gap-1.5"><LockOpen className="w-4 h-4" />Reopen</button>
         </div>
       </div>
 

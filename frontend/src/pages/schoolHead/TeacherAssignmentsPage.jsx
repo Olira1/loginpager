@@ -120,7 +120,7 @@ const CreateAssignmentModal = ({ isOpen, teachers, grades, academicYearId, onClo
     try {
       const [classesRes, subjectsRes] = await Promise.all([
         getClasses(gradeId, academicYearId ? { academic_year_id: academicYearId } : {}),
-        getSubjects(gradeId)
+        getSubjects(gradeId, academicYearId ? { academic_year_id: academicYearId } : {})
       ]);
       if (classesRes.success) {
         setClasses(classesRes.data.items || []);
@@ -352,7 +352,7 @@ const EditAssignmentModal = ({ isOpen, assignment, teachers, grades, academicYea
     try {
       const [classesRes, subjectsRes] = await Promise.all([
         getClasses(gradeId, academicYearId ? { academic_year_id: academicYearId } : {}),
-        getSubjects(gradeId)
+        getSubjects(gradeId, academicYearId ? { academic_year_id: academicYearId } : {})
       ]);
       if (classesRes.success) {
         setClasses(classesRes.data.items || []);

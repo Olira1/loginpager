@@ -22,6 +22,39 @@ const verifyTeachingAssignment = async (teacherId, classId, subjectId) => {
   return assignments.length > 0 ? assignments[0] : null;
 };
 
+// Build scoped filters so assessment setup is isolated per academic year.
+const getAssessmentYearScopes = (academicYearId) => ({
+  strictWhere: 'at.academic_year_id = ?',
+  strictParams: [academicYearId],
+  fallbackWhere: 'at.academic_year_id IS NULL',
+  fallbackParams: []
+});
+
+// Helper to ensure semester accepts grade edits
+const assertSemesterEditable = async (semesterId) => {
+  const [semesters] = await pool.query(
+    'SELECT id, lifecycle_status FROM semesters WHERE id = ?',
+    [semesterId]
+  );
+  if (semesters.length === 0) {
+    return { allowed: false, status: 404, error: { code: 'NOT_FOUND', message: 'Semester not found.' } };
+  }
+
+  const lifecycleStatus = semesters[0].lifecycle_status || 'open';
+  if (lifecycleStatus !== 'open') {
+    return {
+      allowed: false,
+      status: 409,
+      error: {
+        code: 'SEMESTER_CLOSED',
+        message: `This semester is ${lifecycleStatus.replace('_', ' ')}. Grade editing is not allowed.`
+      }
+    };
+  }
+
+  return { allowed: true, status: 200, error: null };
+};
+
 const listAcademicYears = async (req, res) => {
   try {
     const teacherId = req.user.id;
@@ -260,11 +293,13 @@ const getWeightSuggestions = async (req, res) => {
       });
     }
 
+    const { strictWhere, strictParams, fallbackWhere, fallbackParams } = getAssessmentYearScopes(assignment.academic_year_id);
+
     // First, check if the school head has created a weight template
     // Prefer the default template; if none is default, use the most recently created one
     const [templates] = await pool.query(
-      'SELECT * FROM weight_templates WHERE school_id = ? ORDER BY is_default DESC, created_at DESC LIMIT 1',
-      [schoolId]
+      'SELECT * FROM weight_templates WHERE school_id = ? AND (academic_year_id = ? OR academic_year_id IS NULL) ORDER BY (academic_year_id = ?) DESC, is_default DESC, created_at DESC LIMIT 1',
+      [schoolId, assignment.academic_year_id, assignment.academic_year_id]
     );
 
     if (templates.length > 0) {
@@ -295,10 +330,20 @@ const getWeightSuggestions = async (req, res) => {
     }
 
     // Fallback: get assessment types with their default weights
-    const [types] = await pool.query(
-      'SELECT id as assessment_type_id, name as assessment_type_name, default_weight_percent as weight_percent FROM assessment_types WHERE school_id = ?',
-      [schoolId]
+    let [types] = await pool.query(
+      `SELECT at.id as assessment_type_id, at.name as assessment_type_name, at.default_weight_percent as weight_percent
+       FROM assessment_types at
+       WHERE at.school_id = ? AND ${strictWhere}`,
+      [schoolId, ...strictParams]
     );
+    if (types.length === 0) {
+      [types] = await pool.query(
+        `SELECT at.id as assessment_type_id, at.name as assessment_type_name, at.default_weight_percent as weight_percent
+         FROM assessment_types at
+         WHERE at.school_id = ? AND ${fallbackWhere}`,
+        [schoolId, ...fallbackParams]
+      );
+    }
 
     return res.status(200).json({
       success: true,
@@ -340,6 +385,8 @@ const getAssessmentWeights = async (req, res) => {
       });
     }
 
+    const { strictWhere, strictParams, fallbackWhere, fallbackParams } = getAssessmentYearScopes(assignment.academic_year_id);
+
     // Check for teacher-defined weights
     const [weights] = await pool.query(
       `SELECT aw.assessment_type_id, at.name as assessment_type_name, aw.weight_percent
@@ -364,10 +411,20 @@ const getAssessmentWeights = async (req, res) => {
     }
 
     // Fall back to default weights
-    const [defaults] = await pool.query(
-      'SELECT id as assessment_type_id, name as assessment_type_name, default_weight_percent as weight_percent FROM assessment_types WHERE school_id = ?',
-      [schoolId]
+    let [defaults] = await pool.query(
+      `SELECT at.id as assessment_type_id, at.name as assessment_type_name, at.default_weight_percent as weight_percent
+       FROM assessment_types at
+       WHERE at.school_id = ? AND ${strictWhere}`,
+      [schoolId, ...strictParams]
     );
+    if (defaults.length === 0) {
+      [defaults] = await pool.query(
+        `SELECT at.id as assessment_type_id, at.name as assessment_type_name, at.default_weight_percent as weight_percent
+         FROM assessment_types at
+         WHERE at.school_id = ? AND ${fallbackWhere}`,
+        [schoolId, ...fallbackParams]
+      );
+    }
 
     return res.status(200).json({
       success: true,
@@ -461,7 +518,7 @@ const setAssessmentWeights = async (req, res) => {
 const createAssessmentType = async (req, res) => {
   try {
     const schoolId = req.user.school_id;
-    const { name } = req.body;
+    const { name, class_id, subject_id } = req.body;
 
     const trimmedName = String(name || '').trim();
     if (!trimmedName) {
@@ -472,9 +529,26 @@ const createAssessmentType = async (req, res) => {
       });
     }
 
+    let targetAcademicYearId = null;
+    if (class_id && subject_id) {
+      const assignment = await verifyTeachingAssignment(req.user.id, class_id, subject_id);
+      if (!assignment) {
+        return res.status(403).json({
+          success: false,
+          data: null,
+          error: { code: 'FORBIDDEN', message: 'Not assigned to this class/subject.' }
+        });
+      }
+      targetAcademicYearId = assignment.academic_year_id;
+    } else {
+      const currentSemester = await getCurrentSemester();
+      targetAcademicYearId = currentSemester?.academic_year_id || null;
+    }
+
     const [existing] = await pool.query(
-      'SELECT id FROM assessment_types WHERE school_id = ? AND name = ?',
-      [schoolId, trimmedName]
+      `SELECT id FROM assessment_types
+       WHERE school_id = ? AND name = ? AND (academic_year_id = ? OR (academic_year_id IS NULL AND ? IS NULL))`,
+      [schoolId, trimmedName, targetAcademicYearId, targetAcademicYearId]
     );
     if (existing.length > 0) {
       return res.status(409).json({
@@ -485,14 +559,15 @@ const createAssessmentType = async (req, res) => {
     }
 
     const [result] = await pool.query(
-      'INSERT INTO assessment_types (school_id, name, default_weight_percent) VALUES (?, ?, ?)',
-      [schoolId, trimmedName, 0]
+      'INSERT INTO assessment_types (school_id, academic_year_id, name, default_weight_percent) VALUES (?, ?, ?, ?)',
+      [schoolId, targetAcademicYearId, trimmedName, 0]
     );
 
     return res.status(201).json({
       success: true,
       data: {
         assessment_type_id: result.insertId,
+        academic_year_id: targetAcademicYearId,
         name: trimmedName,
         default_weight_percent: 0,
         created_at: new Date().toISOString()
@@ -689,11 +764,12 @@ const listStudentGrades = async (req, res) => {
     // If no weights are set for this assignment, fall back to school-wide assessment types
     if (assessmentTypes.length === 0) {
       [assessmentTypes] = await pool.query(
-        `SELECT id as assessment_type_id, name as assessment_type_name,
-                default_weight_percent as weight_percent, default_weight_percent as max_score_default
-         FROM assessment_types WHERE school_id = ?
-         ORDER BY id`,
-        [req.user.school_id]
+        `SELECT at.id as assessment_type_id, at.name as assessment_type_name,
+                at.default_weight_percent as weight_percent, at.default_weight_percent as max_score_default
+         FROM assessment_types at
+         WHERE at.school_id = ? AND (at.academic_year_id = ? OR at.academic_year_id IS NULL)
+         ORDER BY (at.academic_year_id = ?) DESC, at.id`,
+        [req.user.school_id, assignment.academic_year_id, assignment.academic_year_id]
       );
     }
 
@@ -825,6 +901,15 @@ const enterGrade = async (req, res) => {
       });
     }
 
+    const semesterCheck = await assertSemesterEditable(semester_id);
+    if (!semesterCheck.allowed) {
+      return res.status(semesterCheck.status).json({
+        success: false,
+        data: null,
+        error: semesterCheck.error
+      });
+    }
+
     const numericScore = parseFloat(score);
     if (Number.isNaN(numericScore)) {
       return res.status(400).json({
@@ -948,6 +1033,15 @@ const enterBulkGrades = async (req, res) => {
         success: false,
         data: null,
         error: { code: 'FORBIDDEN', message: 'Not assigned to this class/subject.' }
+      });
+    }
+
+    const semesterCheck = await assertSemesterEditable(semester_id);
+    if (!semesterCheck.allowed) {
+      return res.status(semesterCheck.status).json({
+        success: false,
+        data: null,
+        error: semesterCheck.error
       });
     }
 
@@ -1084,6 +1178,15 @@ const updateGrade = async (req, res) => {
       });
     }
 
+    const semesterCheck = await assertSemesterEditable(gradeInfo[0].semester_id);
+    if (!semesterCheck.allowed) {
+      return res.status(semesterCheck.status).json({
+        success: false,
+        data: null,
+        error: semesterCheck.error
+      });
+    }
+
     if (score !== undefined) {
       const numericScore = parseFloat(score);
       if (Number.isNaN(numericScore) || numericScore < 0 || numericScore > gradeInfo[0].max_score) {
@@ -1185,6 +1288,15 @@ const deleteGrade = async (req, res) => {
         success: false,
         data: null,
         error: { code: 'CONFLICT', message: 'Grades already submitted for approval.' }
+      });
+    }
+
+    const semesterCheck = await assertSemesterEditable(gradeInfo[0].semester_id);
+    if (!semesterCheck.allowed) {
+      return res.status(semesterCheck.status).json({
+        success: false,
+        data: null,
+        error: semesterCheck.error
       });
     }
 
