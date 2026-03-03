@@ -9,4 +9,5 @@ export { default as TeachersPage } from './TeachersPage';
 export { default as TeacherAssignmentsPage } from './TeacherAssignmentsPage';
 export { default as RegistrarsPage } from './RegistrarsPage';
 export { default as StoreHouseUsersPage } from './StoreHouseUsersPage';
+export { default as LifecyclePage } from './LifecyclePage';
 

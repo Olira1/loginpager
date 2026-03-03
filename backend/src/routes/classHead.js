@@ -10,6 +10,8 @@ router.use(verifyToken);
 router.use(checkPasswordChanged);
 router.use(checkRole('class_head'));
 
+router.get('/semesters', classHeadController.listSemesters);
+
 // ==========================================
 // STUDENTS
 // ==========================================

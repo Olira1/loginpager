@@ -114,13 +114,60 @@ export const resetUserPassword = async (userId) => {
   return response.data;
 };
 
-export const getRegistrarStatistics = async () => {
-  const response = await api.get('/registrar/statistics');
+export const getRegistrarStatistics = async (params = {}) => {
+  const response = await api.get('/registrar/statistics', { params });
   return response.data;
 };
 
 export const getRegistrationMetadata = async () => {
   const response = await api.get('/registrar/metadata');
+  return response.data;
+};
+
+// ============ MULTI-YEAR LIFECYCLE ============
+
+/**
+ * Preview promotions before commit
+ * @param {Object} data
+ */
+export const previewPromotions = async (data) => {
+  const response = await api.post('/registrar/promotions/preview', data);
+  return response.data;
+};
+
+/**
+ * Commit promotions
+ * @param {Object} data
+ */
+export const commitPromotions = async (data) => {
+  const response = await api.post('/registrar/promotions/commit', data);
+  return response.data;
+};
+
+/**
+ * List enrollment history for a student
+ * @param {number} studentId
+ */
+export const getStudentEnrollments = async (studentId) => {
+  const response = await api.get(`/registrar/students/${studentId}/enrollments`);
+  return response.data;
+};
+
+/**
+ * List registration operation batches
+ * @param {Object} params
+ */
+export const getRegistrationBatches = async (params = {}) => {
+  const response = await api.get('/registrar/registration-batches', { params });
+  return response.data;
+};
+
+/**
+ * Get registration batch details with row outcomes
+ * @param {number} batchId
+ */
+export const getRegistrationBatchById = async (batchId) => {
+  const response = await api.get(`/registrar/registration-batches/${batchId}`);
   return response.data;
 };
 
@@ -147,4 +194,9 @@ export default {
   resetUserPassword,
   getRegistrarStatistics,
   getRegistrationMetadata,
+  previewPromotions,
+  commitPromotions,
+  getStudentEnrollments,
+  getRegistrationBatches,
+  getRegistrationBatchById,
 };

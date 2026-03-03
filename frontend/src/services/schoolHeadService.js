@@ -128,6 +128,75 @@ export const removeClassHead = async (classId) => {
   return response.data;
 };
 
+// ============ ACADEMIC YEAR LIFECYCLE ============
+
+/**
+ * List academic years for lifecycle forms
+ */
+export const getLifecycleAcademicYears = async () => {
+  const response = await api.get('/school/academic-years');
+  return response.data;
+};
+
+/**
+ * List semesters for lifecycle forms
+ * @param {Object} params - optional { academic_year_id }
+ */
+export const getLifecycleSemesters = async (params = {}) => {
+  const response = await api.get('/school/semesters', { params });
+  return response.data;
+};
+
+/**
+ * Initialize classes for a target academic year from a source year
+ * @param {number} academicYearId - Target academic year ID
+ * @param {Object} data - { source_academic_year_id, copy_class_heads }
+ */
+export const initializeClassesForAcademicYear = async (academicYearId, data) => {
+  const response = await api.post(`/school/academic-years/${academicYearId}/initialize-classes`, data);
+  return response.data;
+};
+
+/**
+ * Open semester for grade entry
+ * @param {number} semesterId
+ * @param {Object} data - optional { reason }
+ */
+export const openSemester = async (semesterId, data = {}) => {
+  const response = await api.post(`/school/semesters/${semesterId}/open`, data);
+  return response.data;
+};
+
+/**
+ * Close semester submissions
+ * @param {number} semesterId
+ * @param {Object} data - optional { reason }
+ */
+export const closeSemesterSubmission = async (semesterId, data = {}) => {
+  const response = await api.post(`/school/semesters/${semesterId}/close-submission`, data);
+  return response.data;
+};
+
+/**
+ * Lock semester
+ * @param {number} semesterId
+ * @param {Object} data - optional { reason }
+ */
+export const lockSemester = async (semesterId, data = {}) => {
+  const response = await api.post(`/school/semesters/${semesterId}/lock`, data);
+  return response.data;
+};
+
+/**
+ * Reopen semester
+ * @param {number} semesterId
+ * @param {Object} data - optional { reason }
+ */
+export const reopenSemester = async (semesterId, data = {}) => {
+  const response = await api.post(`/school/semesters/${semesterId}/reopen`, data);
+  return response.data;
+};
+
 // ============ SUBJECTS ============
 
 /**
@@ -202,9 +271,10 @@ export const activateSubject = async (gradeId, subjectId) => {
 
 /**
  * Get all assessment types
+ * @param {Object} params - Query parameters (academic_year_id)
  */
-export const getAssessmentTypes = async () => {
-  const response = await api.get('/school/assessment-types');
+export const getAssessmentTypes = async (params = {}) => {
+  const response = await api.get('/school/assessment-types', { params });
   return response.data;
 };
 
@@ -508,6 +578,14 @@ export default {
   deleteClass,
   assignClassHead,
   removeClassHead,
+  // Academic Year Lifecycle
+  getLifecycleAcademicYears,
+  getLifecycleSemesters,
+  initializeClassesForAcademicYear,
+  openSemester,
+  closeSemesterSubmission,
+  lockSemester,
+  reopenSemester,
   // Subjects
   getSubjects,
   getAllSubjects,

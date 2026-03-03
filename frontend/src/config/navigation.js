@@ -22,6 +22,7 @@ import {
   Archive,
   FileSpreadsheet,
   Upload,
+  GitBranch,
 } from 'lucide-react';
 
 /**
@@ -50,6 +51,11 @@ export const navigationConfig = {
       name: 'Promotion Criteria',
       path: '/admin/promotion-criteria',
       icon: Award,
+    },
+    {
+      name: 'Academic Years',
+      path: '/admin/academic-years',
+      icon: Calendar,
     },
     {
       name: 'Statistics',
@@ -99,6 +105,11 @@ export const navigationConfig = {
       name: 'Store House Users',
       path: '/school/store-house-users',
       icon: Archive,
+    },
+    {
+      name: 'Lifecycle',
+      path: '/school/lifecycle',
+      icon: GitBranch,
     },
   ],
 
@@ -177,6 +188,11 @@ export const navigationConfig = {
       name: 'Send Roster',
       path: '/class-head/roster',
       icon: Archive,
+    },
+    {
+      name: 'Lifecycle',
+      path: '/class-head/lifecycle',
+      icon: GitBranch,
     },
   ],
 
@@ -288,6 +304,11 @@ export const navigationConfig = {
       name: 'Upload Teachers',
       path: '/registrar/upload/teachers',
       icon: Upload,
+    },
+    {
+      name: 'Lifecycle',
+      path: '/registrar/lifecycle',
+      icon: GitBranch,
     },
   ],
 };

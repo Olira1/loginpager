@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import {
   getGrades,
+  getLifecycleAcademicYears,
   getSubjects,
   addSubject,
   updateSubject,
@@ -285,6 +286,8 @@ const ConfirmDeleteModal = ({ isOpen, subject, onConfirm, onCancel, loading, err
 
 // Main Page Component
 const SubjectsPage = () => {
+  const [academicYears, setAcademicYears] = useState([]);
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState('');
   const [grades, setGrades] = useState([]);
   const [subjectsMap, setSubjectsMap] = useState({});
   const [loading, setLoading] = useState(true);
@@ -300,11 +303,28 @@ const SubjectsPage = () => {
   const [deleteError, setDeleteError] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
 
+  // Fetch academic years
+  const fetchAcademicYears = async () => {
+    try {
+      const response = await getLifecycleAcademicYears();
+      if (response.success) {
+        const years = response.data.items || [];
+        setAcademicYears(years);
+        if (!selectedAcademicYearId && years.length > 0) {
+          const current = years.find((y) => y.is_current) || years[0];
+          setSelectedAcademicYearId(String(current.id));
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching academic years:', err);
+    }
+  };
+
   // Fetch grades
   const fetchGrades = async () => {
     try {
       setLoading(true);
-      const response = await getGrades();
+      const response = await getGrades(selectedAcademicYearId ? { academic_year_id: selectedAcademicYearId } : {});
       if (response.success) {
         setGrades(response.data.items || []);
         setError(null);
@@ -344,8 +364,16 @@ const SubjectsPage = () => {
   };
 
   useEffect(() => {
-    fetchGrades();
+    fetchAcademicYears();
   }, []);
+
+  useEffect(() => {
+    if (selectedAcademicYearId) {
+      setExpandedGrades({});
+      setSubjectsMap({});
+      fetchGrades();
+    }
+  }, [selectedAcademicYearId]);
 
   // Toggle grade expansion
   const toggleGrade = (gradeId) => {
@@ -423,6 +451,16 @@ const SubjectsPage = () => {
           <h1 className="text-2xl font-bold text-gray-900">Subject Configuration</h1>
           <p className="text-gray-500 mt-1">Define subjects per grade level and manage curriculum.</p>
         </div>
+        <select
+          value={selectedAcademicYearId}
+          onChange={(e) => setSelectedAcademicYearId(e.target.value)}
+          className="px-3 py-2.5 border border-gray-300 rounded-lg bg-white"
+        >
+          <option value="">All Years</option>
+          {academicYears.map((year) => (
+            <option key={year.id} value={year.id}>{year.name}</option>
+          ))}
+        </select>
       </div>
 
       {/* Error */}

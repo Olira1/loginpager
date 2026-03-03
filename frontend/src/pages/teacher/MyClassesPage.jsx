@@ -7,24 +7,43 @@ import {
   School, BookOpen, Users, AlertCircle, RefreshCw,
   Settings, FileText, ChevronDown, ChevronUp
 } from 'lucide-react';
-import { getAssignedClasses } from '../../services/teacherService';
+import { getAssignedClasses, getTeacherAcademicYears } from '../../services/teacherService';
 
 const MyClassesPage = () => {
   const navigate = useNavigate();
   const [classes, setClasses] = useState([]);
+  const [academicYears, setAcademicYears] = useState([]);
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expandedClass, setExpandedClass] = useState(null);
 
   useEffect(() => {
-    fetchClasses();
+    const loadYears = async () => {
+      try {
+        const res = await getTeacherAcademicYears();
+        if (res.success) {
+          const years = res.data.items || [];
+          setAcademicYears(years);
+          const current = years.find((y) => y.is_current) || years[0];
+          if (current) setSelectedAcademicYearId(String(current.id));
+        }
+      } catch (err) {
+        console.error('Fetch years error:', err);
+      }
+    };
+    loadYears();
   }, []);
+
+  useEffect(() => {
+    fetchClasses();
+  }, [selectedAcademicYearId]);
 
   const fetchClasses = async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await getAssignedClasses();
+      const response = await getAssignedClasses(selectedAcademicYearId ? { academic_year_id: selectedAcademicYearId } : {});
       if (response.success) {
         const items = response.data?.items || [];
         setClasses(items);
@@ -76,6 +95,18 @@ const MyClassesPage = () => {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">My Classes & Subjects</h1>
         <p className="text-gray-500 mt-1">View your assigned classes and the subjects you teach in each.</p>
+        <div className="mt-3">
+          <select
+            value={selectedAcademicYearId}
+            onChange={(e) => setSelectedAcademicYearId(e.target.value)}
+            className="text-sm border border-gray-300 rounded-lg px-3 py-2"
+          >
+            <option value="">All Years</option>
+            {academicYears.map((year) => (
+              <option key={year.id} value={year.id}>{year.name}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Classes List */}

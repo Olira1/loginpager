@@ -13,6 +13,12 @@ export const getProfile = async () => {
   return response.data;
 };
 
+/** GET /student/periods - Get available years and semesters */
+export const getAvailablePeriods = async () => {
+  const response = await api.get('/student/periods');
+  return response.data;
+};
+
 // ============================================================
 // SEMESTER REPORT
 // ============================================================
@@ -91,6 +97,7 @@ export const getRemarks = async ({ semester_id, academic_year_id }) => {
 
 export default {
   getProfile,
+  getAvailablePeriods,
   getSemesterReport,
   getYearReport,
   listSubjectScores,

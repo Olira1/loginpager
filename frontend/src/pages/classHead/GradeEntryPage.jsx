@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import {
   getAssignedClasses,
+  getLifecycleSemesters,
   listStudentGrades,
   enterBulkGrades,
   submitGradesForApproval,
@@ -25,9 +26,11 @@ import {
 const GradeEntryPage = () => {
   // State: class/subject selection
   const [assignedClasses, setAssignedClasses] = useState([]);
+  const [semesters, setSemesters] = useState([]);
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState('');
   const [selectedClassId, setSelectedClassId] = useState('');
   const [selectedSubjectId, setSelectedSubjectId] = useState('');
-  const [selectedSemesterId, setSelectedSemesterId] = useState('5'); // Default semester
+  const [selectedSemesterId, setSelectedSemesterId] = useState('');
 
   // State: grade data
   const [gradeData, setGradeData] = useState(null);
@@ -62,7 +65,23 @@ const GradeEntryPage = () => {
         setLoading(false);
       }
     };
+    const fetchSemesters = async () => {
+      try {
+        const response = await getLifecycleSemesters();
+        if (response.success) {
+          const items = response.data.items || [];
+          setSemesters(items);
+          if (items[0]) {
+            setSelectedSemesterId(String(items[0].id));
+            setSelectedAcademicYearId(String(items[0].academic_year_id));
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching semesters:', err);
+      }
+    };
     fetchClasses();
+    fetchSemesters();
   }, []);
 
   // Get available subjects for selected class
@@ -307,7 +326,25 @@ const GradeEntryPage = () => {
 
       {/* Class & Subject Selectors */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Academic Year</label>
+            <div className="relative">
+              <select
+                value={selectedAcademicYearId}
+                onChange={() => {}}
+                className="w-full appearance-none bg-white border border-gray-300 rounded-lg px-4 py-2.5 pr-10 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                disabled
+              >
+                {selectedAcademicYearId ? (
+                  <option value={selectedAcademicYearId}>
+                    {semesters.find((s) => String(s.academic_year_id) === String(selectedAcademicYearId))?.academic_year_name || 'Academic Year'}
+                  </option>
+                ) : null}
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+            </div>
+          </div>
           {/* Class Selector */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Class</label>
@@ -355,11 +392,18 @@ const GradeEntryPage = () => {
             <div className="relative">
               <select
                 value={selectedSemesterId}
-                onChange={(e) => setSelectedSemesterId(e.target.value)}
+                onChange={(e) => {
+                  const sem = semesters.find((s) => String(s.id) === e.target.value);
+                  setSelectedSemesterId(e.target.value);
+                  if (sem) setSelectedAcademicYearId(String(sem.academic_year_id));
+                }}
                 className="w-full appearance-none bg-white border border-gray-300 rounded-lg px-4 py-2.5 pr-10 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
               >
-                <option value="5">First Semester (2017 E.C)</option>
-                <option value="6">Second Semester (2017 E.C)</option>
+                {semesters.map((sem) => (
+                  <option key={sem.id} value={sem.id}>
+                    {sem.academic_year_name} - {sem.name || `Semester ${sem.semester_number}`}
+                  </option>
+                ))}
               </select>
               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
             </div>

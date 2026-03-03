@@ -14,6 +14,59 @@ const getCurrentAcademicYear = async () => {
   return years.length > 0 ? years[0] : null;
 };
 
+const listAcademicYearsForLifecycle = async (req, res) => {
+  try {
+    const [years] = await pool.query(
+      `SELECT id, name, start_date, end_date, is_current, lifecycle_status
+       FROM academic_years
+       ORDER BY start_date DESC, id DESC`
+    );
+    return res.status(200).json({
+      success: true,
+      data: { items: years },
+      error: null
+    });
+  } catch (error) {
+    console.error('List academic years for lifecycle error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch academic years.' }
+    });
+  }
+};
+
+const listSemestersForLifecycle = async (req, res) => {
+  try {
+    const { academic_year_id } = req.query;
+    let query = `
+      SELECT s.id, s.name, s.semester_number, s.academic_year_id, ay.name as academic_year_name,
+             s.lifecycle_status, s.is_current
+      FROM semesters s
+      JOIN academic_years ay ON ay.id = s.academic_year_id
+    `;
+    const params = [];
+    if (academic_year_id) {
+      query += ' WHERE s.academic_year_id = ?';
+      params.push(academic_year_id);
+    }
+    query += ' ORDER BY ay.start_date DESC, s.semester_number ASC, s.id ASC';
+    const [semesters] = await pool.query(query, params);
+    return res.status(200).json({
+      success: true,
+      data: { items: semesters },
+      error: null
+    });
+  } catch (error) {
+    console.error('List semesters for lifecycle error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch semesters.' }
+    });
+  }
+};
+
 // ==========================================
 // GRADES MANAGEMENT
 // ==========================================
@@ -25,18 +78,30 @@ const getCurrentAcademicYear = async () => {
 const listGrades = async (req, res) => {
   try {
     const schoolId = req.user.school_id;
+    const { academic_year_id } = req.query;
 
-    const [grades] = await pool.query(
-      `SELECT g.*, 
-              (SELECT COUNT(*) FROM classes c WHERE c.grade_id = g.id) as total_classes,
-              (SELECT COUNT(*) FROM students s 
-               JOIN classes c ON s.class_id = c.id 
-               WHERE c.grade_id = g.id) as total_students
-       FROM grades g
-       WHERE g.school_id = ?
-       ORDER BY g.level ASC`,
-      [schoolId]
-    );
+    let query = `
+      SELECT g.*,
+             (
+               SELECT COUNT(*)
+               FROM classes c
+               WHERE c.grade_id = g.id
+               ${academic_year_id ? 'AND c.academic_year_id = ?' : ''}
+             ) as total_classes,
+             (
+               SELECT COUNT(*)
+               FROM students s
+               JOIN classes c ON s.class_id = c.id
+               WHERE c.grade_id = g.id
+               ${academic_year_id ? 'AND c.academic_year_id = ?' : ''}
+             ) as total_students
+      FROM grades g
+      WHERE g.school_id = ?
+      ORDER BY g.level ASC
+    `;
+    const params = academic_year_id ? [academic_year_id, academic_year_id, schoolId] : [schoolId];
+
+    const [grades] = await pool.query(query, params);
 
     return res.status(200).json({
       success: true,
@@ -255,6 +320,7 @@ const deleteGrade = async (req, res) => {
 const listClassesByGrade = async (req, res) => {
   try {
     const { grade_id } = req.params;
+    const { academic_year_id } = req.query;
     const schoolId = req.user.school_id;
 
     // Verify grade belongs to school
@@ -271,23 +337,29 @@ const listClassesByGrade = async (req, res) => {
       });
     }
 
-    const [classes] = await pool.query(
-      `SELECT c.*, g.name as grade_name, g.level as grade_level,
-              u.name as class_head_name, u.phone as class_head_phone,
-              (SELECT COUNT(*) FROM students s WHERE s.class_id = c.id) as student_count
-       FROM classes c
-       JOIN grades g ON c.grade_id = g.id
-       LEFT JOIN users u ON c.class_head_id = u.id
-       WHERE c.grade_id = ?
-       ORDER BY c.name`,
-      [grade_id]
-    );
+    let classesQuery = `
+      SELECT c.*, g.name as grade_name, g.level as grade_level,
+             u.name as class_head_name, u.phone as class_head_phone,
+             (SELECT COUNT(*) FROM students s WHERE s.class_id = c.id) as student_count
+      FROM classes c
+      JOIN grades g ON c.grade_id = g.id
+      LEFT JOIN users u ON c.class_head_id = u.id
+      WHERE c.grade_id = ?
+    `;
+    const classParams = [grade_id];
+    if (academic_year_id) {
+      classesQuery += ' AND c.academic_year_id = ?';
+      classParams.push(academic_year_id);
+    }
+    classesQuery += ' ORDER BY c.name';
+    const [classes] = await pool.query(classesQuery, classParams);
 
     const items = classes.map(c => ({
       id: c.id,
       name: c.name,
       grade_id: c.grade_id,
       grade_name: c.grade_name,
+      academic_year_id: c.academic_year_id,
       class_head: c.class_head_id ? {
         id: c.class_head_id,
         name: c.class_head_name,
@@ -394,7 +466,7 @@ const createClassUnderGrade = async (req, res) => {
 const listClasses = async (req, res) => {
   try {
     const schoolId = req.user.school_id;
-    const { grade_id } = req.query;
+    const { grade_id, academic_year_id } = req.query;
 
     let query = `
       SELECT c.*, g.name as grade_name, g.level as grade_level,
@@ -411,6 +483,10 @@ const listClasses = async (req, res) => {
       query += ' AND c.grade_id = ?';
       params.push(grade_id);
     }
+    if (academic_year_id) {
+      query += ' AND c.academic_year_id = ?';
+      params.push(academic_year_id);
+    }
 
     query += ' ORDER BY g.level, c.name';
 
@@ -422,6 +498,7 @@ const listClasses = async (req, res) => {
       grade_id: c.grade_id,
       grade_name: c.grade_name,
       grade_level: c.grade_level,
+      academic_year_id: c.academic_year_id,
       class_head: c.class_head_id ? {
         id: c.class_head_id,
         name: c.class_head_name,
@@ -1712,7 +1789,7 @@ const deleteWeightTemplate = async (req, res) => {
 const listTeachingAssignments = async (req, res) => {
   try {
     const schoolId = req.user.school_id;
-    const { teacher_id, class_id, subject_id } = req.query;
+    const { teacher_id, class_id, subject_id, academic_year_id } = req.query;
 
     let query = `
       SELECT ta.*, 
@@ -1731,6 +1808,7 @@ const listTeachingAssignments = async (req, res) => {
     if (teacher_id) { query += ' AND ta.teacher_id = ?'; params.push(teacher_id); }
     if (class_id) { query += ' AND ta.class_id = ?'; params.push(class_id); }
     if (subject_id) { query += ' AND ta.subject_id = ?'; params.push(subject_id); }
+    if (academic_year_id) { query += ' AND ta.academic_year_id = ?'; params.push(academic_year_id); }
 
     query += ' ORDER BY g.level, c.name, s.name';
 
@@ -1765,7 +1843,7 @@ const listTeachingAssignments = async (req, res) => {
 const createTeachingAssignment = async (req, res) => {
   try {
     const schoolId = req.user.school_id;
-    const { teacher_id, class_id, subject_id } = req.body;
+    const { teacher_id, class_id, subject_id, academic_year_id } = req.body;
 
     if (!teacher_id || !class_id || !subject_id) {
       return res.status(400).json({
@@ -1825,14 +1903,34 @@ const createTeachingAssignment = async (req, res) => {
       });
     }
 
-    // Get current academic year
-    const academicYear = await getCurrentAcademicYear();
+    // Resolve target academic year (defaults to current year for backward compatibility)
+    let targetAcademicYearId = academic_year_id;
+    if (!targetAcademicYearId) {
+      const academicYear = await getCurrentAcademicYear();
+      targetAcademicYearId = academicYear?.id || null;
+    }
+    if (!targetAcademicYearId) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'No active academic year found.' }
+      });
+    }
+
+    // Ensure class belongs to the target academic year
+    if (Number(cls[0].academic_year_id) !== Number(targetAcademicYearId)) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'Selected class does not belong to the selected academic year.' }
+      });
+    }
 
     // Check for existing assignment
     const [existing] = await pool.query(
       `SELECT id FROM teaching_assignments 
        WHERE teacher_id = ? AND class_id = ? AND subject_id = ? AND academic_year_id = ?`,
-      [teacher_id, class_id, subject_id, academicYear.id]
+      [teacher_id, class_id, subject_id, targetAcademicYearId]
     );
 
     if (existing.length > 0) {
@@ -1846,7 +1944,7 @@ const createTeachingAssignment = async (req, res) => {
     const [result] = await pool.query(
       `INSERT INTO teaching_assignments (teacher_id, class_id, subject_id, academic_year_id)
        VALUES (?, ?, ?, ?)`,
-      [teacher_id, class_id, subject_id, academicYear.id]
+      [teacher_id, class_id, subject_id, targetAcademicYearId]
     );
 
     return res.status(201).json({
@@ -2777,11 +2875,53 @@ const initializeClassesForAcademicYear = async (req, res) => {
       createdClasses += 1;
     }
 
+    // Ensure target academic year has semester rows so lifecycle actions can be used immediately.
+    // Prefer source year semester templates; fallback to default 2-semester setup.
+    const [sourceSemesters] = await pool.query(
+      `SELECT name, semester_number
+       FROM semesters
+       WHERE academic_year_id = ?
+       ORDER BY semester_number ASC, id ASC`,
+      [source_academic_year_id]
+    );
+
+    const semesterTemplates = sourceSemesters.length > 0
+      ? sourceSemesters
+      : [
+          { name: 'First Semester', semester_number: 1 },
+          { name: 'Second Semester', semester_number: 2 }
+        ];
+
+    let createdSemesters = 0;
+    let skippedSemesters = 0;
+    for (const sem of semesterTemplates) {
+      const [existingSem] = await pool.query(
+        `SELECT id
+         FROM semesters
+         WHERE academic_year_id = ? AND semester_number = ?
+         LIMIT 1`,
+        [academic_year_id, sem.semester_number]
+      );
+      if (existingSem.length > 0) {
+        skippedSemesters += 1;
+        continue;
+      }
+
+      await pool.query(
+        `INSERT INTO semesters (academic_year_id, name, semester_number, is_current, lifecycle_status)
+         VALUES (?, ?, ?, FALSE, 'open')`,
+        [academic_year_id, sem.name || `Semester ${sem.semester_number}`, sem.semester_number]
+      );
+      createdSemesters += 1;
+    }
+
     return res.status(200).json({
       success: true,
       data: {
         created_classes: createdClasses,
         skipped_existing: skippedExisting,
+        created_semesters: createdSemesters,
+        skipped_existing_semesters: skippedSemesters,
         source_academic_year_id: Number(source_academic_year_id),
         target_academic_year_id: Number(academic_year_id)
       },
@@ -2912,6 +3052,8 @@ const reopenSemester = async (req, res) =>
   updateSemesterLifecycleStatus(req, res, 'open');
 
 module.exports = {
+  // Lifecycle metadata
+  listAcademicYearsForLifecycle, listSemestersForLifecycle,
   // Grades
   listGrades, getGrade, createGrade, updateGrade, deleteGrade,
   // Classes (nested under grades - API contract)

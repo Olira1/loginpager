@@ -6,22 +6,66 @@ import {
   Award, RefreshCw, AlertCircle, TrendingUp, TrendingDown,
   BarChart3, Users, ArrowUp, ArrowDown, Minus
 } from 'lucide-react';
-import { getRank } from '../../services/studentService';
+import { getAvailablePeriods, getRank } from '../../services/studentService';
+
+const FALLBACK_PERIODS = {
+  academic_years: [{ id: 3, name: 'Current Academic Year', is_current: true }],
+  semesters: [
+    { id: 5, name: 'First Semester', academic_year_id: 3, academic_year_name: 'Current Academic Year' },
+    { id: 6, name: 'Second Semester', academic_year_id: 3, academic_year_name: 'Current Academic Year' }
+  ]
+};
 
 const RankPage = () => {
   const [rankData, setRankData] = useState(null);
-  const [selectedSemester, setSelectedSemester] = useState('5');
+  const [periods, setPeriods] = useState({ academic_years: [], semesters: [] });
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState('');
+  const [selectedSemester, setSelectedSemester] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const semesters = [
-    { id: '5', name: 'First Semester (2017 E.C)' },
-    { id: '6', name: 'Second Semester (2017 E.C)' },
-  ];
+  const semesters = periods.semesters.filter((s) => String(s.academic_year_id) === String(selectedAcademicYearId));
 
   useEffect(() => {
-    fetchRank();
-  }, [selectedSemester]);
+    const loadPeriods = async () => {
+      try {
+        const res = await getAvailablePeriods();
+        if (res.success) {
+          const data = res.data || { academic_years: [], semesters: [] };
+          const normalized = (data.academic_years?.length && data.semesters?.length) ? data : FALLBACK_PERIODS;
+          setPeriods(normalized);
+          const year = normalized.academic_years.find((y) => y.is_current) || normalized.academic_years[0];
+          if (year) {
+            setSelectedAcademicYearId(String(year.id));
+            const sems = (normalized.semesters || []).filter((s) => Number(s.academic_year_id) === Number(year.id));
+            if (sems[0]) setSelectedSemester(String(sems[0].id));
+          }
+        } else {
+          setPeriods(FALLBACK_PERIODS);
+          setSelectedAcademicYearId(String(FALLBACK_PERIODS.academic_years[0].id));
+          setSelectedSemester(String(FALLBACK_PERIODS.semesters[0].id));
+        }
+      } catch (err) {
+        console.error('Failed to load periods:', err);
+        setPeriods(FALLBACK_PERIODS);
+        setSelectedAcademicYearId(String(FALLBACK_PERIODS.academic_years[0].id));
+        setSelectedSemester(String(FALLBACK_PERIODS.semesters[0].id));
+      }
+    };
+    loadPeriods();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedAcademicYearId) return;
+    const sems = (periods.semesters || []).filter((s) => Number(s.academic_year_id) === Number(selectedAcademicYearId));
+    if (sems.length > 0 && !sems.some((s) => String(s.id) === String(selectedSemester))) {
+      setSelectedSemester(String(sems[0].id));
+    }
+  }, [selectedAcademicYearId, periods.semesters]);
+
+  useEffect(() => {
+    if (selectedSemester && selectedAcademicYearId) fetchRank();
+  }, [selectedSemester, selectedAcademicYearId]);
 
   const fetchRank = async () => {
     setLoading(true);
@@ -29,7 +73,7 @@ const RankPage = () => {
     try {
       const res = await getRank({
         semester_id: parseInt(selectedSemester),
-        academic_year_id: 3,
+        academic_year_id: parseInt(selectedAcademicYearId),
         type: 'semester',
       });
       if (res.success) {
@@ -70,15 +114,26 @@ const RankPage = () => {
           <h1 className="text-2xl font-bold text-gray-900">My Rank</h1>
           <p className="text-gray-500 mt-1">Your rank and class comparison.</p>
         </div>
-        <select
-          value={selectedSemester}
-          onChange={(e) => setSelectedSemester(e.target.value)}
-          className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-        >
-          {semesters.map(s => (
-            <option key={s.id} value={s.id}>{s.name}</option>
-          ))}
-        </select>
+        <div className="flex gap-2">
+          <select
+            value={selectedAcademicYearId}
+            onChange={(e) => setSelectedAcademicYearId(e.target.value)}
+            className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          >
+            {periods.academic_years.map((y) => (
+              <option key={y.id} value={y.id}>{y.name}</option>
+            ))}
+          </select>
+          <select
+            value={selectedSemester}
+            onChange={(e) => setSelectedSemester(e.target.value)}
+            className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          >
+            {semesters.map(s => (
+              <option key={s.id} value={s.id}>{s.academic_year_name} - {s.name}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {error && (

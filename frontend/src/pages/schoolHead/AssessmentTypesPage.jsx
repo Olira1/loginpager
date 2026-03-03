@@ -22,7 +22,8 @@ import {
   getWeightTemplates,
   createWeightTemplate,
   updateWeightTemplate,
-  deleteWeightTemplate
+  deleteWeightTemplate,
+  getLifecycleAcademicYears
 } from '../../services/schoolHeadService';
 
 // Assessment Type Card
@@ -423,6 +424,8 @@ const ConfirmDeleteModal = ({ isOpen, item, type, onConfirm, onCancel, loading }
 
 // Main Page Component
 const AssessmentTypesPage = () => {
+  const [academicYears, setAcademicYears] = useState([]);
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState('');
   const [assessmentTypes, setAssessmentTypes] = useState([]);
   const [weightTemplates, setWeightTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -434,18 +437,37 @@ const AssessmentTypesPage = () => {
   const [deleteModal, setDeleteModal] = useState({ open: false, type: null, item: null });
   const [actionLoading, setActionLoading] = useState(false);
 
+  // Fetch academic years
+  const fetchAcademicYears = async () => {
+    try {
+      const response = await getLifecycleAcademicYears();
+      if (response.success) {
+        const years = response.data.items || [];
+        setAcademicYears(years);
+        if (!selectedAcademicYearId && years.length > 0) {
+          const current = years.find((y) => y.is_current) || years[0];
+          setSelectedAcademicYearId(String(current.id));
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching academic years:', err);
+    }
+  };
+
   // Fetch data - each call handled individually so one failure doesn't block the other
   const fetchData = async () => {
     try {
       setLoading(true);
       setError(null);
 
+      const yearParams = selectedAcademicYearId ? { academic_year_id: selectedAcademicYearId } : {};
+
       const [typesRes, templatesRes] = await Promise.all([
-        getAssessmentTypes().catch(err => {
+        getAssessmentTypes(yearParams).catch(err => {
           console.error('Error fetching assessment types:', err);
           return null;
         }),
-        getWeightTemplates().catch(err => {
+        getWeightTemplates(yearParams).catch(err => {
           console.error('Error fetching weight templates:', err);
           return null;
         })
@@ -467,8 +489,14 @@ const AssessmentTypesPage = () => {
   };
 
   useEffect(() => {
-    fetchData();
+    fetchAcademicYears();
   }, []);
+
+  useEffect(() => {
+    if (selectedAcademicYearId) {
+      fetchData();
+    }
+  }, [selectedAcademicYearId]);
 
   // Handle assessment type save
   const handleSaveType = async (formData) => {
@@ -523,9 +551,21 @@ const AssessmentTypesPage = () => {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Assessment Configuration</h1>
-        <p className="text-gray-500 mt-1">Configure assessment types and weight templates for grading.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Assessment Configuration</h1>
+          <p className="text-gray-500 mt-1">Configure assessment types and weight templates for grading.</p>
+        </div>
+        <select
+          value={selectedAcademicYearId}
+          onChange={(e) => setSelectedAcademicYearId(e.target.value)}
+          className="px-3 py-2.5 border border-gray-300 rounded-lg bg-white"
+        >
+          <option value="">All Years</option>
+          {academicYears.map((year) => (
+            <option key={year.id} value={year.id}>{year.name}</option>
+          ))}
+        </select>
       </div>
 
       {/* Error */}

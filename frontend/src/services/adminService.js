@@ -203,6 +203,54 @@ export const getSchoolStatistics = async (schoolId) => {
   return response.data;
 };
 
+// ============ ACADEMIC YEAR LIFECYCLE ============
+
+/**
+ * Get academic years with lifecycle metadata
+ */
+export const getAcademicYears = async () => {
+  const response = await api.get('/admin/academic-years');
+  return response.data;
+};
+
+/**
+ * Create academic year
+ * @param {Object} data - { name, start_date, end_date, set_as_current }
+ */
+export const createAcademicYear = async (data) => {
+  const response = await api.post('/admin/academic-years', data);
+  return response.data;
+};
+
+/**
+ * Activate academic year
+ * @param {number} academicYearId
+ */
+export const activateAcademicYear = async (academicYearId) => {
+  const response = await api.post(`/admin/academic-years/${academicYearId}/activate`);
+  return response.data;
+};
+
+/**
+ * Lock academic year
+ * @param {number} academicYearId
+ * @param {Object} data - { reason }
+ */
+export const lockAcademicYear = async (academicYearId, data = {}) => {
+  const response = await api.post(`/admin/academic-years/${academicYearId}/lock`, data);
+  return response.data;
+};
+
+/**
+ * Reopen academic year
+ * @param {number} academicYearId
+ * @param {Object} data - { reason }
+ */
+export const reopenAcademicYear = async (academicYearId, data = {}) => {
+  const response = await api.post(`/admin/academic-years/${academicYearId}/reopen`, data);
+  return response.data;
+};
+
 export default {
   // Schools
   getSchools,
@@ -229,5 +277,11 @@ export default {
   // Statistics
   getStatistics,
   getSchoolStatistics,
+  // Academic Year Lifecycle
+  getAcademicYears,
+  createAcademicYear,
+  activateAcademicYear,
+  lockAcademicYear,
+  reopenAcademicYear,
 };
 

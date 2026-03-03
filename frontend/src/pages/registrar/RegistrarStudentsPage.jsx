@@ -46,6 +46,9 @@ const RegistrarStudentsPage = () => {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
+  const [filterYear, setFilterYear] = useState('');
+  const [filterGrade, setFilterGrade] = useState('');
+  const [filterClass, setFilterClass] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [createForm, setCreateForm] = useState(defaultCreateForm);
@@ -57,7 +60,11 @@ const RegistrarStudentsPage = () => {
   const fetchStudents = async () => {
     try {
       setLoading(true);
-      const response = await getStudents({ search, status });
+      const params = { search, status };
+      if (filterYear) params.academic_year_id = filterYear;
+      if (filterGrade) params.grade_id = filterGrade;
+      if (filterClass) params.class_id = filterClass;
+      const response = await getStudents(params);
       if (response.success) {
         setStudents(response.data?.items || []);
         setError('');
@@ -88,7 +95,7 @@ const RegistrarStudentsPage = () => {
   useEffect(() => {
     fetchStudents();
     fetchMetadata();
-  }, [status]);
+  }, [status, filterYear, filterGrade, filterClass]);
 
   const visibleStudents = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -98,6 +105,11 @@ const RegistrarStudentsPage = () => {
       String(s.student_code || '').toLowerCase().includes(q)
     );
   }, [students, search]);
+
+  const classesForFilter = useMemo(() => {
+    if (!filterGrade) return metadata.classes || [];
+    return (metadata.classes || []).filter((c) => Number(c.grade_id) === Number(filterGrade));
+  }, [metadata.classes, filterGrade]);
 
   const classesForCreateGrade = useMemo(() => {
     if (!createForm.grade_id) return [];
@@ -290,6 +302,18 @@ const RegistrarStudentsPage = () => {
           <option value="all">All</option>
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
+        </select>
+        <select value={filterYear} onChange={(e) => setFilterYear(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg" disabled={metadataLoading}>
+          <option value="">All Years</option>
+          {(metadata.academic_years || []).map((ay) => <option key={ay.id} value={ay.id}>{ay.name}</option>)}
+        </select>
+        <select value={filterGrade} onChange={(e) => { setFilterGrade(e.target.value); setFilterClass(''); }} className="px-3 py-2 border border-gray-300 rounded-lg" disabled={metadataLoading}>
+          <option value="">All Grades</option>
+          {(metadata.grades || []).map((g) => <option key={g.id} value={g.id}>{g.level ? `Grade ${g.level}` : g.name}</option>)}
+        </select>
+        <select value={filterClass} onChange={(e) => setFilterClass(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg" disabled={metadataLoading}>
+          <option value="">All Classes</option>
+          {classesForFilter.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
         <button onClick={fetchStudents} className="px-3 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
           Refresh

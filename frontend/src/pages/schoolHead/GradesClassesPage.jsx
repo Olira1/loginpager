@@ -20,6 +20,7 @@ import {
 import {
   getGrades,
   getClasses,
+  getLifecycleAcademicYears,
   createGrade,
   updateGrade,
   deleteGrade,
@@ -478,6 +479,8 @@ const ConfirmDeleteModal = ({ isOpen, title, message, onConfirm, onCancel, loadi
 
 // Main Page Component
 const GradesClassesPage = () => {
+  const [academicYears, setAcademicYears] = useState([]);
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState('');
   const [grades, setGrades] = useState([]);
   const [classesMap, setClassesMap] = useState({});
   const [teachers, setTeachers] = useState([]);
@@ -496,10 +499,26 @@ const GradesClassesPage = () => {
   const [actionLoading, setActionLoading] = useState(false);
 
   // Fetch grades
+  const fetchAcademicYears = async () => {
+    try {
+      const response = await getLifecycleAcademicYears();
+      if (response.success) {
+        const years = response.data.items || [];
+        setAcademicYears(years);
+        if (!selectedAcademicYearId && years.length > 0) {
+          const current = years.find((y) => y.is_current) || years[0];
+          setSelectedAcademicYearId(String(current.id));
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching academic years:', err);
+    }
+  };
+
   const fetchGrades = async () => {
     try {
       setLoading(true);
-      const response = await getGrades();
+      const response = await getGrades(selectedAcademicYearId ? { academic_year_id: selectedAcademicYearId } : {});
       if (response.success) {
         setGrades(response.data.items || []);
         setError(null);
@@ -532,7 +551,7 @@ const GradesClassesPage = () => {
   const fetchClasses = async (gradeId) => {
     try {
       setLoadingClasses(prev => ({ ...prev, [gradeId]: true }));
-      const response = await getClasses(gradeId);
+      const response = await getClasses(gradeId, selectedAcademicYearId ? { academic_year_id: selectedAcademicYearId } : {});
       if (response.success) {
         setClassesMap(prev => ({ ...prev, [gradeId]: response.data.items || [] }));
       }
@@ -544,9 +563,17 @@ const GradesClassesPage = () => {
   };
 
   useEffect(() => {
-    fetchGrades();
+    fetchAcademicYears();
     fetchTeachers();
   }, []);
+
+  useEffect(() => {
+    if (selectedAcademicYearId) {
+      setExpandedGrades({});
+      setClassesMap({});
+      fetchGrades();
+    }
+  }, [selectedAcademicYearId]);
 
   // Toggle grade expansion
   const toggleGrade = (gradeId) => {
@@ -638,6 +665,16 @@ const GradesClassesPage = () => {
           <p className="text-gray-500 mt-1">Define and organize grades and classes within your school.</p>
         </div>
         <div className="flex gap-3">
+          <select
+            value={selectedAcademicYearId}
+            onChange={(e) => setSelectedAcademicYearId(e.target.value)}
+            className="px-3 py-2.5 border border-gray-300 rounded-lg bg-white"
+          >
+            <option value="">All Years</option>
+            {academicYears.map((year) => (
+              <option key={year.id} value={year.id}>{year.name}</option>
+            ))}
+          </select>
           <button
             onClick={() => setGradeModal({ open: true, mode: 'create', grade: null })}
             className="flex items-center gap-2 px-4 py-2.5 border border-gray-300 hover:bg-gray-50 rounded-lg transition-colors"

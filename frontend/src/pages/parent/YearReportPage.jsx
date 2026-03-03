@@ -5,17 +5,13 @@ import { useState, useEffect } from 'react';
 import {
   RefreshCw, AlertCircle
 } from 'lucide-react';
-import { listChildren, getChildYearReport } from '../../services/parentService';
-
-// Available academic years (matching seed data)
-const academicYears = [
-  { id: 3, name: '2024/2025 (2017 E.C)' },
-];
+import { listChildren, getChildAvailablePeriods, getChildYearReport } from '../../services/parentService';
 
 const YearReportPage = () => {
   const [children, setChildren] = useState([]);
   const [selectedChild, setSelectedChild] = useState(null);
-  const [selectedYear, setSelectedYear] = useState(academicYears[0]);
+  const [academicYears, setAcademicYears] = useState([]);
+  const [selectedYearId, setSelectedYearId] = useState('');
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [reportLoading, setReportLoading] = useState(false);
@@ -27,9 +23,29 @@ const YearReportPage = () => {
 
   useEffect(() => {
     if (selectedChild) {
+      loadChildYears();
+    }
+  }, [selectedChild]);
+
+  useEffect(() => {
+    if (selectedChild && selectedYearId) {
       fetchReport();
     }
-  }, [selectedChild, selectedYear]);
+  }, [selectedChild, selectedYearId]);
+
+  const loadChildYears = async () => {
+    try {
+      const res = await getChildAvailablePeriods(selectedChild.student_id);
+      if (res.success) {
+        const years = res.data?.academic_years || [];
+        setAcademicYears(years);
+        const current = years.find((y) => y.is_current) || years[0];
+        if (current) setSelectedYearId(String(current.id));
+      }
+    } catch (err) {
+      console.error('Failed to load child years:', err);
+    }
+  };
 
   const fetchChildren = async () => {
     setLoading(true);
@@ -52,7 +68,7 @@ const YearReportPage = () => {
     setError(null);
     try {
       const res = await getChildYearReport(selectedChild.student_id, {
-        academic_year_id: selectedYear.id
+        academic_year_id: Number(selectedYearId)
       });
       if (res.success) {
         setReport(res.data);
@@ -110,8 +126,8 @@ const YearReportPage = () => {
         <div>
           <p className="text-xs font-medium text-gray-500 mb-1">Academic Year</p>
           <select
-            value={selectedYear.id}
-            onChange={(e) => setSelectedYear(academicYears.find(y => y.id === parseInt(e.target.value)))}
+            value={selectedYearId}
+            onChange={(e) => setSelectedYearId(e.target.value)}
             className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
           >
             {academicYears.map(y => (

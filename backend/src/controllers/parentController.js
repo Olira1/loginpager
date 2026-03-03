@@ -71,6 +71,57 @@ const getAcademicYearFromSemester = async (semesterId) => {
   return rows.length > 0 ? rows[0].academic_year_id : null;
 };
 
+const listChildAvailablePeriods = async (req, res) => {
+  try {
+    const { student_id } = req.params;
+    const parentUserId = req.user.id;
+
+    const isParent = await verifyParentChild(parentUserId, student_id);
+    if (!isParent) {
+      return res.status(403).json({
+        success: false,
+        data: null,
+        error: { code: 'FORBIDDEN', message: 'This student is not linked to your account.' }
+      });
+    }
+
+    const [years] = await pool.query(
+      `SELECT DISTINCT ay.id, ay.name, ay.start_date, ay.end_date, ay.is_current
+       FROM student_enrollments se
+       JOIN academic_years ay ON ay.id = se.academic_year_id
+       WHERE se.student_id = ?
+       ORDER BY ay.start_date DESC, ay.id DESC`,
+      [student_id]
+    );
+
+    const [semesters] = await pool.query(
+      `SELECT s.id, s.name, s.semester_number, s.academic_year_id, ay.name as academic_year_name
+       FROM semesters s
+       JOIN academic_years ay ON ay.id = s.academic_year_id
+       WHERE s.academic_year_id IN (
+         SELECT DISTINCT se.academic_year_id
+         FROM student_enrollments se
+         WHERE se.student_id = ?
+       )
+       ORDER BY ay.start_date DESC, s.semester_number ASC, s.id ASC`,
+      [student_id]
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: { academic_years: years, semesters },
+      error: null
+    });
+  } catch (error) {
+    console.error('List child available periods error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch child periods.' }
+    });
+  }
+};
+
 // ==========================================
 // LIST CHILDREN
 // ==========================================
@@ -632,6 +683,7 @@ const getChildYearReport = async (req, res) => {
 
 module.exports = {
   listChildren,
+  listChildAvailablePeriods,
   getChildSemesterReport,
   getChildYearReport,
   listChildSubjectScores,

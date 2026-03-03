@@ -6,24 +6,48 @@ import {
   FileSpreadsheet, RefreshCw, AlertCircle, User, School, Calendar,
   TrendingUp, TrendingDown
 } from 'lucide-react';
-import { getYearReport } from '../../services/studentService';
+import { getAvailablePeriods, getYearReport } from '../../services/studentService';
+
+const FALLBACK_YEARS = [{ id: 3, name: 'Current Academic Year', is_current: true }];
 
 const YearReportPage = () => {
   const [report, setReport] = useState(null);
+  const [academicYears, setAcademicYears] = useState([]);
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const academicYearId = 3; // 2017 E.C / 2024-2025
+  useEffect(() => {
+    const loadYears = async () => {
+      try {
+        const periodsRes = await getAvailablePeriods();
+        if (periodsRes.success) {
+          const years = periodsRes.data?.academic_years?.length ? periodsRes.data.academic_years : FALLBACK_YEARS;
+          setAcademicYears(years);
+          const current = years.find((y) => y.is_current) || years[0];
+          if (current) setSelectedAcademicYearId(String(current.id));
+        } else {
+          setAcademicYears(FALLBACK_YEARS);
+          setSelectedAcademicYearId(String(FALLBACK_YEARS[0].id));
+        }
+      } catch (err) {
+        console.error('Failed to load academic years:', err);
+        setAcademicYears(FALLBACK_YEARS);
+        setSelectedAcademicYearId(String(FALLBACK_YEARS[0].id));
+      }
+    };
+    loadYears();
+  }, []);
 
   useEffect(() => {
-    fetchReport();
-  }, []);
+    if (selectedAcademicYearId) fetchReport();
+  }, [selectedAcademicYearId]);
 
   const fetchReport = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await getYearReport({ academic_year_id: academicYearId });
+      const res = await getYearReport({ academic_year_id: Number(selectedAcademicYearId) });
       if (res.success) {
         setReport(res.data);
       } else {
@@ -51,6 +75,17 @@ const YearReportPage = () => {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Year Report</h1>
         <p className="text-gray-500 mt-1">Your complete academic year grade report.</p>
+        <div className="mt-3">
+          <select
+            value={selectedAcademicYearId}
+            onChange={(e) => setSelectedAcademicYearId(e.target.value)}
+            className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          >
+            {academicYears.map((year) => (
+              <option key={year.id} value={year.id}>{year.name}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {error && (

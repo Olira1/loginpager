@@ -10,6 +10,12 @@ router.use(checkPasswordChanged);
 router.use(checkRole('school_head'));
 
 // ==========================================
+// LIFECYCLE METADATA
+// ==========================================
+router.get('/academic-years', schoolHeadController.listAcademicYearsForLifecycle);
+router.get('/semesters', schoolHeadController.listSemestersForLifecycle);
+
+// ==========================================
 // GRADES
 // ==========================================
 router.get('/grades', schoolHeadController.listGrades);

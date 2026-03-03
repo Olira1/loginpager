@@ -17,7 +17,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { getGrades, getTeachers, getAllClasses } from '../../services/schoolHeadService';
+import { getGrades, getTeachers, getAllClasses, getLifecycleAcademicYears } from '../../services/schoolHeadService';
 
 // Stat Card Component
 const StatCard = ({ icon: Icon, label, value, sublabel, color = 'indigo', onClick }) => {
@@ -99,6 +99,8 @@ const SchoolHeadDashboard = () => {
     totalStudents: 0
   });
   const [classes, setClasses] = useState([]);
+  const [academicYears, setAcademicYears] = useState([]);
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -110,10 +112,11 @@ const SchoolHeadDashboard = () => {
       else setLoading(true);
 
       // Fetch grades, teachers, and classes in parallel
+      const params = selectedAcademicYearId ? { academic_year_id: selectedAcademicYearId } : {};
       const [gradesRes, teachersRes, classesRes] = await Promise.all([
-        getGrades(),
+        getGrades(params),
         getTeachers(),
-        getAllClasses()
+        getAllClasses(params)
       ]);
 
       // Calculate stats
@@ -151,8 +154,25 @@ const SchoolHeadDashboard = () => {
   };
 
   useEffect(() => {
-    fetchData();
+    const loadYears = async () => {
+      try {
+        const res = await getLifecycleAcademicYears();
+        if (res.success) {
+          const years = res.data.items || [];
+          setAcademicYears(years);
+          const current = years.find((y) => y.is_current) || years[0];
+          if (current) setSelectedAcademicYearId(String(current.id));
+        }
+      } catch (err) {
+        console.error('Error loading academic years:', err);
+      }
+    };
+    loadYears();
   }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [selectedAcademicYearId]);
 
   // Loading state
   if (loading) {
@@ -196,14 +216,26 @@ const SchoolHeadDashboard = () => {
             Welcome back! Overview of {user?.school_name || 'your school'}'s academic configuration.
           </p>
         </div>
-        <button
-          onClick={() => fetchData(true)}
-          disabled={refreshing}
-          className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-        >
-          <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-          <span>Refresh</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <select
+            value={selectedAcademicYearId}
+            onChange={(e) => setSelectedAcademicYearId(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm"
+          >
+            <option value="">All Years</option>
+            {academicYears.map((year) => (
+              <option key={year.id} value={year.id}>{year.name}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => fetchData(true)}
+            disabled={refreshing}
+            className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
+          </button>
+        </div>
       </div>
 
       {/* Stats Grid */}

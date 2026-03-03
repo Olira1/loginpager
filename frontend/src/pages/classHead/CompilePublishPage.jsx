@@ -27,12 +27,33 @@ import {
   publishSemesterResults,
   publishYearResults,
   getStudentReport,
+  getLifecycleSemesters,
 } from '../../services/classHeadService';
 
 const CompilePublishPage = () => {
   // State: selections
-  const [selectedSemesterId, setSelectedSemesterId] = useState('5');
-  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState('3');
+  const [selectedSemesterId, setSelectedSemesterId] = useState('');
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState('');
+  const [semesters, setSemesters] = useState([]);
+  useEffect(() => {
+    const loadSemesters = async () => {
+      try {
+        const res = await getLifecycleSemesters();
+        if (res.success) {
+          const items = res.data.items || [];
+          setSemesters(items);
+          if (items[0]) {
+            setSelectedSemesterId(String(items[0].id));
+            setSelectedAcademicYearId(String(items[0].academic_year_id));
+          }
+        }
+      } catch (err) {
+        console.error('Error loading semesters:', err);
+      }
+    };
+    loadSemesters();
+  }, []);
+
 
   // State: data
   const [rankings, setRankings] = useState(null);
@@ -49,6 +70,12 @@ const CompilePublishPage = () => {
   const [publishingYear, setPublishingYear] = useState(false);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
+
+  const selectedYearSemesters = semesters
+    .filter((s) => String(s.academic_year_id) === String(selectedAcademicYearId))
+    .sort((a, b) => (a.semester_number || 0) - (b.semester_number || 0));
+  const sem1Id = selectedYearSemesters[0]?.id;
+  const sem2Id = selectedYearSemesters[1]?.id;
 
   // Fetch rankings
   const fetchRankings = async () => {
@@ -74,16 +101,16 @@ const CompilePublishPage = () => {
       setLoadingReport(true);
       // Fetch reports for both semesters
       const [sem1Response, sem2Response] = await Promise.all([
-        getStudentReport(studentId, {
-          semester_id: 5,
+        sem1Id ? getStudentReport(studentId, {
+          semester_id: sem1Id,
           academic_year_id: parseInt(selectedAcademicYearId),
           type: 'semester',
-        }).catch(() => null),
-        getStudentReport(studentId, {
-          semester_id: 6,
+        }).catch(() => null) : Promise.resolve(null),
+        sem2Id ? getStudentReport(studentId, {
+          semester_id: sem2Id,
           academic_year_id: parseInt(selectedAcademicYearId),
           type: 'semester',
-        }).catch(() => null),
+        }).catch(() => null) : Promise.resolve(null),
       ]);
 
       const sem1Data = sem1Response?.success ? sem1Response.data : null;
@@ -147,8 +174,8 @@ const CompilePublishPage = () => {
   const computeAverageRankings = async () => {
     try {
       const [rank1Res, rank2Res] = await Promise.all([
-        getStudentRankings({ semester_id: 5 }).catch(() => null),
-        getStudentRankings({ semester_id: 6 }).catch(() => null),
+        sem1Id ? getStudentRankings({ semester_id: sem1Id }).catch(() => null) : Promise.resolve(null),
+        sem2Id ? getStudentRankings({ semester_id: sem2Id }).catch(() => null) : Promise.resolve(null),
       ]);
       const rank1Items = rank1Res?.success ? rank1Res.data.items : [];
       const rank2Items = rank2Res?.success ? rank2Res.data.items : [];
@@ -182,11 +209,13 @@ const CompilePublishPage = () => {
 
   // Load rankings on mount and selection change
   useEffect(() => {
-    fetchRankings();
-    computeAverageRankings();
-    setCurrentStudentIndex(0);
-    setStudentReport(null);
-  }, [selectedSemesterId]);
+    if (selectedSemesterId) {
+      fetchRankings();
+      computeAverageRankings();
+      setCurrentStudentIndex(0);
+      setStudentReport(null);
+    }
+  }, [selectedSemesterId, selectedAcademicYearId, sem1Id, sem2Id]);
 
   // Fetch student report when rankings load or student index changes
   useEffect(() => {
@@ -324,11 +353,18 @@ const CompilePublishPage = () => {
             <div className="relative">
               <select
                 value={selectedSemesterId}
-                onChange={(e) => setSelectedSemesterId(e.target.value)}
+                onChange={(e) => {
+                  const sem = semesters.find((s) => String(s.id) === e.target.value);
+                  setSelectedSemesterId(e.target.value);
+                  if (sem) setSelectedAcademicYearId(String(sem.academic_year_id));
+                }}
                 className="w-full appearance-none bg-white border border-gray-300 rounded-lg px-4 py-2.5 pr-10 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
               >
-                <option value="5">First Semester (2017 E.C)</option>
-                <option value="6">Second Semester (2017 E.C)</option>
+                {semesters.map((sem) => (
+                  <option key={sem.id} value={sem.id}>
+                    {sem.academic_year_name} - {sem.name || `Semester ${sem.semester_number}`}
+                  </option>
+                ))}
               </select>
               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
             </div>
@@ -338,10 +374,15 @@ const CompilePublishPage = () => {
             <div className="relative">
               <select
                 value={selectedAcademicYearId}
-                onChange={(e) => setSelectedAcademicYearId(e.target.value)}
+                onChange={() => {}}
                 className="w-full appearance-none bg-white border border-gray-300 rounded-lg px-4 py-2.5 pr-10 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                disabled
               >
-                <option value="3">2024/2025 (2017 E.C)</option>
+                {selectedAcademicYearId ? (
+                  <option value={selectedAcademicYearId}>
+                    {semesters.find((s) => String(s.academic_year_id) === String(selectedAcademicYearId))?.academic_year_name || 'Academic Year'}
+                  </option>
+                ) : null}
               </select>
               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
             </div>

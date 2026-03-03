@@ -9,3 +9,4 @@ export { default as CompilePublishPage } from './CompilePublishPage';
 export { default as ClassSnapshotPage } from './ClassSnapshotPage';
 export { default as StudentReportsPage } from './StudentReportsPage';
 export { default as SendRosterPage } from './SendRosterPage';
+export { default as ClassHeadLifecyclePage } from './LifecyclePage';

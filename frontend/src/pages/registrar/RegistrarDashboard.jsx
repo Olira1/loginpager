@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Users, UserCheck, UserRound, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
-import { getRegistrarStatistics } from '../../services/registrarService';
+import { getRegistrarStatistics, getRegistrationMetadata } from '../../services/registrarService';
 
 const StatCard = ({ title, value, subtitle, icon: CardIcon, color }) => (
   <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
@@ -22,12 +22,16 @@ const RegistrarDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+  const [selectedYear, setSelectedYear] = useState('');
+  const [academicYears, setAcademicYears] = useState([]);
 
   const fetchStats = async (isRefresh = false) => {
     try {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
-      const response = await getRegistrarStatistics();
+      const params = {};
+      if (selectedYear) params.academic_year_id = selectedYear;
+      const response = await getRegistrarStatistics(params);
       if (response.success) {
         setStats(response.data);
         setError('');
@@ -44,6 +48,20 @@ const RegistrarDashboard = () => {
 
   useEffect(() => {
     fetchStats();
+  }, [selectedYear]);
+
+  useEffect(() => {
+    const loadMetadata = async () => {
+      try {
+        const response = await getRegistrationMetadata();
+        if (response.success) {
+          setAcademicYears(response.data?.academic_years || []);
+        }
+      } catch (err) {
+        // silent — metadata is supplementary
+      }
+    };
+    loadMetadata();
   }, []);
 
   if (loading) {
@@ -61,14 +79,26 @@ const RegistrarDashboard = () => {
           <h1 className="text-2xl font-bold text-gray-900">Registrar Dashboard</h1>
           <p className="text-gray-500 mt-1">Overview of student, teacher, and parent records.</p>
         </div>
-        <button
-          onClick={() => fetchStats(true)}
-          disabled={refreshing}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
-        >
-          <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-3">
+          <select
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(e.target.value)}
+            className="px-3 py-2 rounded-lg border border-gray-200 text-gray-700"
+          >
+            <option value="">All Years</option>
+            {academicYears.map((ay) => (
+              <option key={ay.id} value={ay.id}>{ay.name}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => fetchStats(true)}
+            disabled={refreshing}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {error ? (

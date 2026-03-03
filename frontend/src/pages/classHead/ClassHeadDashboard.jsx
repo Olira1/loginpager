@@ -22,7 +22,7 @@ import {
   FileSpreadsheet,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { getStudents, getSubmissionChecklist } from '../../services/classHeadService';
+import { getStudents, getSubmissionChecklist, getLifecycleSemesters } from '../../services/classHeadService';
 
 // ============ Reusable Components ============
 
@@ -112,6 +112,8 @@ const ClassHeadDashboard = () => {
   const [classInfo, setClassInfo] = useState(null);
   const [students, setStudents] = useState([]);
   const [submissions, setSubmissions] = useState(null);
+  const [semesters, setSemesters] = useState([]);
+  const [selectedSemesterId, setSelectedSemesterId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -125,7 +127,7 @@ const ClassHeadDashboard = () => {
       // Fetch students and submission checklist in parallel
       const [studentsRes, checklistRes] = await Promise.all([
         getStudents(),
-        getSubmissionChecklist({ semester_id: 1 }).catch(() => null), // semester_id placeholder
+        selectedSemesterId ? getSubmissionChecklist({ semester_id: parseInt(selectedSemesterId, 10) }).catch(() => null) : Promise.resolve(null),
       ]);
 
       // Set class info from students response
@@ -152,8 +154,24 @@ const ClassHeadDashboard = () => {
 
   // Load data on mount
   useEffect(() => {
-    fetchData();
+    const loadSemesters = async () => {
+      try {
+        const res = await getLifecycleSemesters();
+        if (res.success) {
+          const items = res.data.items || [];
+          setSemesters(items);
+          if (items[0]) setSelectedSemesterId(String(items[0].id));
+        }
+      } catch (err) {
+        console.error('Error loading semesters:', err);
+      }
+    };
+    loadSemesters();
   }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [selectedSemesterId]);
 
   // Loading state
   if (loading) {
@@ -201,14 +219,27 @@ const ClassHeadDashboard = () => {
             )}
           </p>
         </div>
-        <button
-          onClick={() => fetchData(true)}
-          disabled={refreshing}
-          className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-        >
-          <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-          <span>Refresh</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <select
+            value={selectedSemesterId}
+            onChange={(e) => setSelectedSemesterId(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+          >
+            {semesters.map((sem) => (
+              <option key={sem.id} value={sem.id}>
+                {sem.academic_year_name} - {sem.name || `Semester ${sem.semester_number}`}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => fetchData(true)}
+            disabled={refreshing}
+            className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
+          </button>
+        </div>
       </div>
 
       {/* Stats Grid */}

@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import {
   getAssignedClasses,
+  getTeacherAcademicYears,
+  getTeacherSemesters,
   listStudentGrades,
   enterBulkGrades,
   updateGrade,
@@ -16,12 +18,20 @@ import {
   submitGradesForApproval
 } from '../../services/teacherService';
 
+const DEFAULT_SEMESTERS = [
+  { id: 5, name: 'First Semester' },
+  { id: 6, name: 'Second Semester' }
+];
+
 const GradeEntryPage = () => {
   // Selection state
   const [classes, setClasses] = useState([]);
+  const [academicYears, setAcademicYears] = useState([]);
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState('');
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('');
   const [selectedSemester, setSelectedSemester] = useState('');
+  const [semesters, setSemesters] = useState([]);
   const [availableSubjects, setAvailableSubjects] = useState([]);
 
   // Grade data
@@ -36,14 +46,55 @@ const GradeEntryPage = () => {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
 
-  const semesters = [
-    { id: 5, name: 'First Semester (2017 E.C)' },
-    { id: 6, name: 'Second Semester (2017 E.C)' },
-  ];
+  useEffect(() => {
+    const loadYears = async () => {
+      try {
+        const res = await getTeacherAcademicYears();
+        if (res.success) {
+          const years = res.data.items || [];
+          setAcademicYears(years);
+          const current = years.find((y) => y.is_current) || years[0];
+          if (current) setSelectedAcademicYearId(String(current.id));
+        }
+      } catch (err) {
+        console.error('Load teacher years error:', err);
+        setAcademicYears([]);
+      }
+    };
+    loadYears();
+  }, []);
 
   useEffect(() => {
     fetchClasses();
-  }, []);
+    setSelectedClass('');
+    setSelectedSubject('');
+    setGradeData(null);
+    const loadSemesters = async () => {
+      if (!selectedAcademicYearId) {
+        setSemesters(DEFAULT_SEMESTERS);
+        setSelectedSemester(String(DEFAULT_SEMESTERS[0].id));
+        return;
+      }
+      try {
+        const res = await getTeacherSemesters({ academic_year_id: selectedAcademicYearId });
+        if (res.success) {
+          const items = res.data.items || [];
+          if (items.length > 0) {
+            setSemesters(items);
+            setSelectedSemester(String(items[0].id));
+          } else {
+            setSemesters(DEFAULT_SEMESTERS);
+            setSelectedSemester(String(DEFAULT_SEMESTERS[0].id));
+          }
+        }
+      } catch (err) {
+        console.error('Load teacher semesters error:', err);
+        setSemesters(DEFAULT_SEMESTERS);
+        setSelectedSemester(String(DEFAULT_SEMESTERS[0].id));
+      }
+    };
+    loadSemesters();
+  }, [selectedAcademicYearId]);
 
   useEffect(() => {
     if (selectedClass) {
@@ -64,7 +115,7 @@ const GradeEntryPage = () => {
   const fetchClasses = async () => {
     setLoading(true);
     try {
-      const response = await getAssignedClasses();
+      const response = await getAssignedClasses(selectedAcademicYearId ? { academic_year_id: selectedAcademicYearId } : {});
       if (response.success) {
         setClasses(response.data?.items || []);
       }
@@ -297,7 +348,20 @@ const GradeEntryPage = () => {
 
       {/* Selectors */}
       <div className="bg-white border border-gray-200 rounded-xl p-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Academic Year</label>
+            <select
+              value={selectedAcademicYearId}
+              onChange={(e) => setSelectedAcademicYearId(e.target.value)}
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            >
+              <option value="">All Years</option>
+              {academicYears.map((year) => (
+                <option key={year.id} value={year.id}>{year.name}</option>
+              ))}
+            </select>
+          </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Class</label>
             <select
@@ -336,7 +400,7 @@ const GradeEntryPage = () => {
             >
               <option value="">Select Semester</option>
               {semesters.map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
+                <option key={s.id} value={s.id}>{s.academic_year_name ? `${s.academic_year_name} - ${s.name}` : s.name}</option>
               ))}
             </select>
           </div>

@@ -13,6 +13,7 @@ router.use(checkRole('student'));
 // PROFILE
 // ==========================================
 router.get('/profile', studentController.getProfile);
+router.get('/periods', studentController.listAvailablePeriods);
 
 // ==========================================
 // REPORTS

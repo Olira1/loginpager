@@ -23,6 +23,7 @@ import {
   reviewSubmission,
   approveSubmission,
   rejectSubmission,
+  getLifecycleSemesters,
 } from '../../services/classHeadService';
 
 // Status badge component
@@ -47,7 +48,24 @@ const StatusBadge = ({ status }) => {
 const SubmissionsPage = () => {
   // State
   const [checklist, setChecklist] = useState(null);
-  const [selectedSemesterId, setSelectedSemesterId] = useState('5');
+  const [selectedSemesterId, setSelectedSemesterId] = useState('');
+  const [semesters, setSemesters] = useState([]);
+  useEffect(() => {
+    const loadSemesters = async () => {
+      try {
+        const res = await getLifecycleSemesters();
+        if (res.success) {
+          const items = res.data.items || [];
+          setSemesters(items);
+          if (items[0]) setSelectedSemesterId(String(items[0].id));
+        }
+      } catch (err) {
+        console.error('Error loading semesters:', err);
+      }
+    };
+    loadSemesters();
+  }, []);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
@@ -189,8 +207,11 @@ const SubmissionsPage = () => {
               onChange={(e) => setSelectedSemesterId(e.target.value)}
               className="appearance-none bg-white border border-gray-300 rounded-lg px-4 py-2 pr-10 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
             >
-              <option value="5">First Semester (2017 E.C)</option>
-              <option value="6">Second Semester (2017 E.C)</option>
+              {semesters.map((sem) => (
+                <option key={sem.id} value={sem.id}>
+                  {sem.academic_year_name} - {sem.name || `Semester ${sem.semester_number}`}
+                </option>
+              ))}
             </select>
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
           </div>

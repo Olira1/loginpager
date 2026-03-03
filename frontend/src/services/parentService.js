@@ -13,6 +13,12 @@ export const listChildren = async () => {
   return response.data;
 };
 
+/** GET /parent/children/:id/periods - Available periods for selected child */
+export const getChildAvailablePeriods = async (studentId) => {
+  const response = await api.get(`/parent/children/${studentId}/periods`);
+  return response.data;
+};
+
 // ============================================================
 // CHILD REPORTS
 // ============================================================
@@ -71,6 +77,7 @@ export const getChildRank = async (studentId, { semester_id, academic_year_id, t
 
 export default {
   listChildren,
+  getChildAvailablePeriods,
   getChildSemesterReport,
   getChildYearReport,
   listChildSubjectScores,

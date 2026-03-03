@@ -12,6 +12,16 @@ import api from './api';
  * Get classes assigned to the teacher
  * @param {Object} params - { academic_year_id }
  */
+export const getTeacherAcademicYears = async () => {
+  const response = await api.get('/teacher/academic-years');
+  return response.data;
+};
+
+export const getTeacherSemesters = async (params = {}) => {
+  const response = await api.get('/teacher/semesters', { params });
+  return response.data;
+};
+
 export const getAssignedClasses = async (params = {}) => {
   const response = await api.get('/teacher/classes', { params });
   return response.data;
@@ -189,6 +199,8 @@ export const getComputedAverages = async (classId, subjectId, params = {}) => {
 // DEFAULT EXPORT
 // ============================================================
 export default {
+  getTeacherAcademicYears,
+  getTeacherSemesters,
   getAssignedClasses,
   getAssignedSubjects,
   getWeightSuggestions,

@@ -13,6 +13,7 @@ router.use(checkRole('parent'));
 // CHILDREN
 // ==========================================
 router.get('/children', parentController.listChildren);
+router.get('/children/:student_id/periods', parentController.listChildAvailablePeriods);
 
 // ==========================================
 // CHILD REPORTS

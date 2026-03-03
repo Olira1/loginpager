@@ -58,6 +58,54 @@ const getAcademicYearFromSemester = async (semesterId) => {
   return rows.length > 0 ? rows[0].academic_year_id : null;
 };
 
+const listAvailablePeriods = async (req, res) => {
+  try {
+    const student = await getStudentInfo(req.user.id);
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: { code: 'NOT_FOUND', message: 'Student profile not found.' }
+      });
+    }
+
+    const [years] = await pool.query(
+      `SELECT DISTINCT ay.id, ay.name, ay.start_date, ay.end_date, ay.is_current
+       FROM student_enrollments se
+       JOIN academic_years ay ON ay.id = se.academic_year_id
+       WHERE se.student_id = ?
+       ORDER BY ay.start_date DESC, ay.id DESC`,
+      [student.id]
+    );
+
+    const [semesters] = await pool.query(
+      `SELECT s.id, s.name, s.semester_number, s.academic_year_id, ay.name as academic_year_name
+       FROM semesters s
+       JOIN academic_years ay ON ay.id = s.academic_year_id
+       WHERE s.academic_year_id IN (
+         SELECT DISTINCT se.academic_year_id
+         FROM student_enrollments se
+         WHERE se.student_id = ?
+       )
+       ORDER BY ay.start_date DESC, s.semester_number ASC, s.id ASC`,
+      [student.id]
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: { academic_years: years, semesters },
+      error: null
+    });
+  } catch (error) {
+    console.error('List student available periods error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch available periods.' }
+    });
+  }
+};
+
 // ==========================================
 // VIEW SEMESTER REPORT
 // ==========================================
@@ -636,6 +684,7 @@ const getRemarks = async (req, res) => {
 };
 
 module.exports = {
+  listAvailablePeriods,
   getSemesterReport,
   getSubjectGrades,
   getRank,

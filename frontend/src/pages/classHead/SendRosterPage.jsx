@@ -25,12 +25,14 @@ import {
   sendRosterToStoreHouse,
   getClassSnapshot,
   getStudentRankings,
+  getLifecycleSemesters,
 } from '../../services/classHeadService';
 
 const SendRosterPage = () => {
   // State: selections
-  const [selectedSemesterId, setSelectedSemesterId] = useState('5');
-  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState('3');
+  const [selectedSemesterId, setSelectedSemesterId] = useState('');
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState('');
+  const [semesters, setSemesters] = useState([]);
 
   // State: data
   const [rosterData, setRosterData] = useState(null);
@@ -41,6 +43,31 @@ const SendRosterPage = () => {
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
 
+  useEffect(() => {
+    const loadSemesters = async () => {
+      try {
+        const res = await getLifecycleSemesters();
+        if (res.success) {
+          const items = res.data.items || [];
+          setSemesters(items);
+          if (items[0]) {
+            setSelectedSemesterId(String(items[0].id));
+            setSelectedAcademicYearId(String(items[0].academic_year_id));
+          }
+        }
+      } catch (err) {
+        console.error('Error loading semesters:', err);
+      }
+    };
+    loadSemesters();
+  }, []);
+
+  const selectedYearSemesters = semesters
+    .filter((s) => String(s.academic_year_id) === String(selectedAcademicYearId))
+    .sort((a, b) => (a.semester_number || 0) - (b.semester_number || 0));
+  const sem1Id = selectedYearSemesters[0]?.id;
+  const sem2Id = selectedYearSemesters[1]?.id;
+
   // Fetch roster review data (both semesters + rankings)
   const fetchReviewData = async () => {
     try {
@@ -49,10 +76,10 @@ const SendRosterPage = () => {
 
       // Fetch class snapshot for both semesters and rankings for both
       const [snap1Res, snap2Res, rank1Res, rank2Res] = await Promise.all([
-        getClassSnapshot({ semester_id: 5 }).catch(() => null),
-        getClassSnapshot({ semester_id: 6 }).catch(() => null),
-        getStudentRankings({ semester_id: 5 }).catch(() => null),
-        getStudentRankings({ semester_id: 6 }).catch(() => null),
+        sem1Id ? getClassSnapshot({ semester_id: sem1Id, academic_year_id: parseInt(selectedAcademicYearId, 10) }).catch(() => null) : Promise.resolve(null),
+        sem2Id ? getClassSnapshot({ semester_id: sem2Id, academic_year_id: parseInt(selectedAcademicYearId, 10) }).catch(() => null) : Promise.resolve(null),
+        sem1Id ? getStudentRankings({ semester_id: sem1Id }).catch(() => null) : Promise.resolve(null),
+        sem2Id ? getStudentRankings({ semester_id: sem2Id }).catch(() => null) : Promise.resolve(null),
       ]);
 
       const snap1 = snap1Res?.success ? snap1Res.data : null;
@@ -173,8 +200,8 @@ const SendRosterPage = () => {
 
   // Load review data on mount
   useEffect(() => {
-    fetchReviewData();
-  }, []);
+    if (selectedAcademicYearId) fetchReviewData();
+  }, [selectedAcademicYearId]);
 
   // Handle send roster
   const handleSendRoster = async () => {
@@ -371,11 +398,18 @@ const SendRosterPage = () => {
             <div className="relative">
               <select
                 value={selectedSemesterId}
-                onChange={(e) => setSelectedSemesterId(e.target.value)}
+                onChange={(e) => {
+                  const sem = semesters.find((s) => String(s.id) === e.target.value);
+                  setSelectedSemesterId(e.target.value);
+                  if (sem) setSelectedAcademicYearId(String(sem.academic_year_id));
+                }}
                 className="w-full appearance-none bg-white border border-gray-300 rounded-lg px-4 py-2.5 pr-10 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
               >
-                <option value="5">First Semester (2017 E.C)</option>
-                <option value="6">Second Semester (2017 E.C)</option>
+                {semesters.map((sem) => (
+                  <option key={sem.id} value={sem.id}>
+                    {sem.academic_year_name} - {sem.name || `Semester ${sem.semester_number}`}
+                  </option>
+                ))}
               </select>
               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
             </div>
@@ -385,10 +419,15 @@ const SendRosterPage = () => {
             <div className="relative">
               <select
                 value={selectedAcademicYearId}
-                onChange={(e) => setSelectedAcademicYearId(e.target.value)}
+                onChange={() => {}}
                 className="w-full appearance-none bg-white border border-gray-300 rounded-lg px-4 py-2.5 pr-10 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                disabled
               >
-                <option value="3">2024/2025 (2017 E.C)</option>
+                {selectedAcademicYearId ? (
+                  <option value={selectedAcademicYearId}>
+                    {semesters.find((s) => String(s.academic_year_id) === String(selectedAcademicYearId))?.academic_year_name || 'Academic Year'}
+                  </option>
+                ) : null}
               </select>
               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
             </div>

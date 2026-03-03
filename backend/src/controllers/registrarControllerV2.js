@@ -1767,6 +1767,7 @@ const commitPromotions = async (req, res) => {
       from_academic_year_id,
       to_academic_year_id,
       class_mappings = [],
+      default_target_class_id = null,
       promotion_criteria_id = null
     } = req.body || {};
 
@@ -1837,7 +1838,7 @@ const commitPromotions = async (req, res) => {
       let toEnrollmentId = null;
 
       if (decision === 'promoted') {
-        toClassId = classMapping.get(Number(row.class_id)) || null;
+        toClassId = classMapping.get(Number(row.class_id)) || (default_target_class_id ? Number(default_target_class_id) : null);
         if (!toClassId) {
           itemStatus = 'failed';
           errorMessage = 'Target class mapping not found.';

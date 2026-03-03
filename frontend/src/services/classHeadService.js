@@ -97,6 +97,23 @@ export const publishYearResults = async (data) => {
   return response.data;
 };
 
+/**
+ * Lock semester after finalization
+ * @param {Object} data - { semester_id, academic_year_id, reason }
+ */
+export const lockSemesterResults = async (data) => {
+  const response = await api.post('/class-head/lock/semester', data);
+  return response.data;
+};
+
+/**
+ * List semesters for class head lifecycle forms
+ */
+export const getLifecycleSemesters = async () => {
+  const response = await api.get('/class-head/semesters');
+  return response.data;
+};
+
 // ============ REPORTS ============
 
 /**
@@ -291,6 +308,8 @@ export default {
   compileGrades,
   publishSemesterResults,
   publishYearResults,
+  lockSemesterResults,
+  getLifecycleSemesters,
   getClassSnapshot,
   getStudentReport,
   sendRosterToStoreHouse,

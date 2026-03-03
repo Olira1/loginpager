@@ -7,13 +7,48 @@ const { pool } = require('../config/db');
 // Helper to get class head's assigned class
 const getClassHeadClass = async (userId) => {
   const [classes] = await pool.query(
-    `SELECT c.id, c.name, g.name as grade_name, g.id as grade_id
+    `SELECT c.id, c.name, c.academic_year_id, g.name as grade_name, g.id as grade_id
      FROM classes c
      JOIN grades g ON c.grade_id = g.id
      WHERE c.class_head_id = ?`,
     [userId]
   );
   return classes.length > 0 ? classes[0] : null;
+};
+
+const listSemesters = async (req, res) => {
+  try {
+    const classInfo = await getClassHeadClass(req.user.id);
+    if (!classInfo) {
+      return res.status(403).json({
+        success: false,
+        data: null,
+        error: { code: 'FORBIDDEN', message: 'You are not assigned as class head.' }
+      });
+    }
+
+    const [semesters] = await pool.query(
+      `SELECT s.id, s.name, s.semester_number, s.academic_year_id, ay.name as academic_year_name, s.lifecycle_status
+       FROM semesters s
+       JOIN academic_years ay ON ay.id = s.academic_year_id
+       WHERE s.academic_year_id = ?
+       ORDER BY s.semester_number ASC, s.id ASC`,
+      [classInfo.academic_year_id]
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: { items: semesters },
+      error: null
+    });
+  } catch (error) {
+    console.error('List class head semesters error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch semesters.' }
+    });
+  }
 };
 
 // Resolve a student's class/grade context for a requested academic year.
@@ -1250,6 +1285,7 @@ const getStudentReport = async (req, res) => {
 };
 
 module.exports = {
+  listSemesters,
   listStudents,
   getSubmissionChecklist,
   getStudentRankings,

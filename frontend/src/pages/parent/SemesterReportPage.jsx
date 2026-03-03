@@ -7,22 +7,14 @@ import {
 } from 'lucide-react';
 import {
   listChildren, getChildSemesterReport, getChildRank,
-  listChildSubjectScores
+  listChildSubjectScores, getChildAvailablePeriods
 } from '../../services/parentService';
-
-// Available semesters (matching seed data)
-const semesterOptions = [
-  { id: 5, name: 'First Semester (2017 E.C)', academic_year_id: 3 },
-  { id: 6, name: 'Second Semester (2017 E.C)', academic_year_id: 3 },
-];
-
-const sem1Id = 5;
-const sem2Id = 6;
-const academicYearId = 3;
 
 const SemesterReportPage = () => {
   const [children, setChildren] = useState([]);
   const [selectedChild, setSelectedChild] = useState(null);
+  const [periods, setPeriods] = useState({ academic_years: [], semesters: [] });
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState('');
   const [sem1Report, setSem1Report] = useState(null);
   const [sem2Report, setSem2Report] = useState(null);
   const [rankData, setRankData] = useState(null);
@@ -36,9 +28,29 @@ const SemesterReportPage = () => {
 
   useEffect(() => {
     if (selectedChild) {
-      fetchReports();
+      loadChildPeriods();
     }
   }, [selectedChild]);
+
+  useEffect(() => {
+    if (selectedChild && selectedAcademicYearId) {
+      fetchReports();
+    }
+  }, [selectedChild, selectedAcademicYearId]);
+
+  const loadChildPeriods = async () => {
+    try {
+      const res = await getChildAvailablePeriods(selectedChild.student_id);
+      if (res.success) {
+        const data = res.data || { academic_years: [], semesters: [] };
+        setPeriods(data);
+        const year = data.academic_years.find((y) => y.is_current) || data.academic_years[0];
+        if (year) setSelectedAcademicYearId(String(year.id));
+      }
+    } catch (err) {
+      console.error('Failed to load child periods:', err);
+    }
+  };
 
   const fetchChildren = async () => {
     setLoading(true);
@@ -62,15 +74,25 @@ const SemesterReportPage = () => {
     setRankData(null);
     setError(null);
     try {
+      const yearSemesters = (periods.semesters || [])
+        .filter((s) => String(s.academic_year_id) === String(selectedAcademicYearId))
+        .sort((a, b) => (a.semester_number || 0) - (b.semester_number || 0));
+      const sem1Id = yearSemesters[0]?.id;
+      const sem2Id = yearSemesters[1]?.id;
+      if (!sem1Id && !sem2Id) {
+        setError('No semesters found for selected academic year.');
+        return;
+      }
+
       const [sem1Res, sem2Res, rankRes] = await Promise.all([
-        getChildSemesterReport(selectedChild.student_id, {
-          semester_id: sem1Id, academic_year_id: academicYearId
-        }).catch(() => null),
-        getChildSemesterReport(selectedChild.student_id, {
-          semester_id: sem2Id, academic_year_id: academicYearId
-        }).catch(() => null),
+        sem1Id ? getChildSemesterReport(selectedChild.student_id, {
+          semester_id: sem1Id, academic_year_id: Number(selectedAcademicYearId)
+        }).catch(() => null) : Promise.resolve(null),
+        sem2Id ? getChildSemesterReport(selectedChild.student_id, {
+          semester_id: sem2Id, academic_year_id: Number(selectedAcademicYearId)
+        }).catch(() => null) : Promise.resolve(null),
         getChildRank(selectedChild.student_id, {
-          semester_id: sem1Id, academic_year_id: academicYearId, type: 'semester'
+          semester_id: sem1Id || sem2Id, academic_year_id: Number(selectedAcademicYearId), type: 'semester'
         }).catch(() => null),
       ]);
 
@@ -81,7 +103,7 @@ const SemesterReportPage = () => {
       // Fallback: if no published reports, fetch live subject scores
       if (!sem1Res?.success && !sem2Res?.success) {
         try {
-          const scoresRes = await listChildSubjectScores(selectedChild.student_id, { semester_id: sem1Id });
+          const scoresRes = await listChildSubjectScores(selectedChild.student_id, { semester_id: sem1Id || sem2Id });
           if (scoresRes?.success && scoresRes.data.items?.length > 0) {
             setSem1Report({
               student: null,
@@ -169,6 +191,19 @@ const SemesterReportPage = () => {
           </div>
         </div>
       )}
+
+      <div className="bg-white border border-gray-200 rounded-xl p-4">
+        <p className="text-xs font-medium text-gray-500 mb-1">Academic Year</p>
+        <select
+          value={selectedAcademicYearId}
+          onChange={(e) => setSelectedAcademicYearId(e.target.value)}
+          className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+        >
+          {periods.academic_years.map((y) => (
+            <option key={y.id} value={y.id}>{y.name}</option>
+          ))}
+        </select>
+      </div>
 
       {reportLoading ? (
         <div className="flex items-center justify-center h-40">

@@ -12,6 +12,8 @@ router.use(checkRole('teacher', 'class_head'));
 // ==========================================
 // ASSIGNED CLASSES & SUBJECTS
 // ==========================================
+router.get('/academic-years', teacherController.listAcademicYears);
+router.get('/semesters', teacherController.listSemesters);
 router.get('/classes', teacherController.listAssignedClasses);
 router.get('/subjects', teacherController.listAssignedSubjects);
 

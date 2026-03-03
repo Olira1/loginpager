@@ -39,6 +39,8 @@ const RegistrarTeachersPage = () => {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
+  const [filterGender, setFilterGender] = useState('');
+  const [filterSpecialization, setFilterSpecialization] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [createForm, setCreateForm] = useState(defaultCreateForm);
@@ -48,7 +50,10 @@ const RegistrarTeachersPage = () => {
   const fetchTeachers = async () => {
     try {
       setLoading(true);
-      const response = await getTeachers({ search, status });
+      const params = { search, status };
+      if (filterGender) params.gender = filterGender;
+      if (filterSpecialization) params.specialization = filterSpecialization;
+      const response = await getTeachers(params);
       if (response.success) {
         setTeachers(response.data?.items || []);
         setError('');
@@ -64,7 +69,7 @@ const RegistrarTeachersPage = () => {
 
   useEffect(() => {
     fetchTeachers();
-  }, [status]);
+  }, [status, filterGender, filterSpecialization]);
 
   const visibleTeachers = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -227,6 +232,21 @@ const RegistrarTeachersPage = () => {
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
         </select>
+        <select
+          value={filterGender}
+          onChange={(e) => setFilterGender(e.target.value)}
+          className="px-3 py-2 border border-gray-300 rounded-lg"
+        >
+          <option value="">All Genders</option>
+          <option value="M">Male</option>
+          <option value="F">Female</option>
+        </select>
+        <input
+          value={filterSpecialization}
+          onChange={(e) => setFilterSpecialization(e.target.value)}
+          placeholder="Filter by specialization"
+          className="px-3 py-2 border border-gray-300 rounded-lg"
+        />
         <button
           onClick={fetchTeachers}
           className="px-3 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"

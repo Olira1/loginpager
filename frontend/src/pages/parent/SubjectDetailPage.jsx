@@ -7,19 +7,15 @@ import {
   Maximize2, Minimize2, Users
 } from 'lucide-react';
 import {
-  listChildren, listChildSubjectScores, getChildSubjectGrades
+  listChildren, listChildSubjectScores, getChildSubjectGrades, getChildAvailablePeriods
 } from '../../services/parentService';
-
-// Available semesters (matching seed data)
-const semesters = [
-  { id: 5, name: 'First Semester (2017 E.C)', academic_year_id: 3 },
-  { id: 6, name: 'Second Semester (2017 E.C)', academic_year_id: 3 },
-];
 
 const SubjectDetailPage = () => {
   const [children, setChildren] = useState([]);
   const [selectedChild, setSelectedChild] = useState(null);
-  const [selectedSemester, setSelectedSemester] = useState(semesters[0]);
+  const [periods, setPeriods] = useState({ academic_years: [], semesters: [] });
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState('');
+  const [selectedSemesterId, setSelectedSemesterId] = useState('');
   const [subjects, setSubjects] = useState([]);
   const [subjectDetails, setSubjectDetails] = useState({}); // keyed by subject id
   const [expandedSubjects, setExpandedSubjects] = useState(new Set());
@@ -33,9 +29,33 @@ const SubjectDetailPage = () => {
 
   useEffect(() => {
     if (selectedChild) {
+      loadChildPeriods();
+    }
+  }, [selectedChild]);
+
+  useEffect(() => {
+    if (selectedChild && selectedSemesterId) {
       fetchSubjects();
     }
-  }, [selectedChild, selectedSemester]);
+  }, [selectedChild, selectedSemesterId]);
+
+  const loadChildPeriods = async () => {
+    try {
+      const res = await getChildAvailablePeriods(selectedChild.student_id);
+      if (res.success) {
+        const data = res.data || { academic_years: [], semesters: [] };
+        setPeriods(data);
+        const year = data.academic_years.find((y) => y.is_current) || data.academic_years[0];
+        if (year) {
+          setSelectedAcademicYearId(String(year.id));
+          const sems = (data.semesters || []).filter((s) => Number(s.academic_year_id) === Number(year.id));
+          if (sems[0]) setSelectedSemesterId(String(sems[0].id));
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load child periods:', err);
+    }
+  };
 
   const fetchChildren = async () => {
     setLoading(true);
@@ -59,7 +79,7 @@ const SubjectDetailPage = () => {
     setExpandedSubjects(new Set());
     try {
       const res = await listChildSubjectScores(selectedChild.student_id, {
-        semester_id: selectedSemester.id
+        semester_id: Number(selectedSemesterId)
       });
       if (res.success) {
         const items = res.data.items || [];
@@ -71,7 +91,7 @@ const SubjectDetailPage = () => {
         await Promise.all(items.map(async (sub) => {
           try {
             const detailRes = await getChildSubjectGrades(
-              selectedChild.student_id, sub.id, { semester_id: selectedSemester.id }
+              selectedChild.student_id, sub.id, { semester_id: Number(selectedSemesterId) }
             );
             if (detailRes.success) {
               details[sub.id] = detailRes.data;
@@ -158,14 +178,33 @@ const SubjectDetailPage = () => {
           </div>
         )}
         <div>
-          <p className="text-xs font-medium text-gray-500 mb-1">Semester</p>
+          <p className="text-xs font-medium text-gray-500 mb-1">Academic Year</p>
           <select
-            value={selectedSemester.id}
-            onChange={(e) => setSelectedSemester(semesters.find(s => s.id === parseInt(e.target.value)))}
+            value={selectedAcademicYearId}
+            onChange={(e) => {
+              const nextYear = e.target.value;
+              setSelectedAcademicYearId(nextYear);
+              const sems = (periods.semesters || []).filter((s) => String(s.academic_year_id) === String(nextYear));
+              setSelectedSemesterId(sems[0] ? String(sems[0].id) : '');
+            }}
             className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
           >
-            {semesters.map(s => (
-              <option key={s.id} value={s.id}>{s.name}</option>
+            {periods.academic_years.map((y) => (
+              <option key={y.id} value={y.id}>{y.name}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <p className="text-xs font-medium text-gray-500 mb-1">Semester</p>
+          <select
+            value={selectedSemesterId}
+            onChange={(e) => setSelectedSemesterId(e.target.value)}
+            className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          >
+            {(periods.semesters || [])
+              .filter((s) => String(s.academic_year_id) === String(selectedAcademicYearId))
+              .map(s => (
+              <option key={s.id} value={s.id}>{s.academic_year_name} - {s.name}</option>
             ))}
           </select>
         </div>

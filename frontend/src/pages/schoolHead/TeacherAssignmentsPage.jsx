@@ -21,6 +21,7 @@ import {
   getTeachers,
   getGrades,
   getClasses,
+  getLifecycleAcademicYears,
   getSubjects,
   getTeachingAssignments,
   createTeachingAssignment,
@@ -83,7 +84,7 @@ const TeacherCard = ({ teacher, assignmentCount }) => {
 };
 
 // Create Assignment Modal
-const CreateAssignmentModal = ({ isOpen, teachers, grades, onClose, onSave }) => {
+const CreateAssignmentModal = ({ isOpen, teachers, grades, academicYearId, onClose, onSave }) => {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
     teacher_id: '',
@@ -118,7 +119,7 @@ const CreateAssignmentModal = ({ isOpen, teachers, grades, onClose, onSave }) =>
     setLoadingOptions(true);
     try {
       const [classesRes, subjectsRes] = await Promise.all([
-        getClasses(gradeId),
+        getClasses(gradeId, academicYearId ? { academic_year_id: academicYearId } : {}),
         getSubjects(gradeId)
       ]);
       if (classesRes.success) {
@@ -308,7 +309,7 @@ const CreateAssignmentModal = ({ isOpen, teachers, grades, onClose, onSave }) =>
 };
 
 // Edit Assignment Modal
-const EditAssignmentModal = ({ isOpen, assignment, teachers, grades, onClose, onSave }) => {
+const EditAssignmentModal = ({ isOpen, assignment, teachers, grades, academicYearId, onClose, onSave }) => {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
     teacher_id: '',
@@ -350,7 +351,7 @@ const EditAssignmentModal = ({ isOpen, assignment, teachers, grades, onClose, on
     setLoadingOptions(true);
     try {
       const [classesRes, subjectsRes] = await Promise.all([
-        getClasses(gradeId),
+        getClasses(gradeId, academicYearId ? { academic_year_id: academicYearId } : {}),
         getSubjects(gradeId)
       ]);
       if (classesRes.success) {
@@ -567,6 +568,8 @@ const TeacherAssignmentsPage = () => {
   const [assignments, setAssignments] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [grades, setGrades] = useState([]);
+  const [academicYears, setAcademicYears] = useState([]);
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -585,10 +588,12 @@ const TeacherAssignmentsPage = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [assignmentsRes, teachersRes, gradesRes] = await Promise.all([
-        getTeachingAssignments(),
+      const params = selectedAcademicYearId ? { academic_year_id: selectedAcademicYearId } : {};
+      const [assignmentsRes, teachersRes, gradesRes, yearsRes] = await Promise.all([
+        getTeachingAssignments(params),
         getTeachers(),
-        getGrades()
+        getGrades(params),
+        getLifecycleAcademicYears()
       ]);
       
       if (assignmentsRes.success) {
@@ -599,6 +604,14 @@ const TeacherAssignmentsPage = () => {
       }
       if (gradesRes.success) {
         setGrades(gradesRes.data.items || []);
+      }
+      if (yearsRes.success) {
+        const years = yearsRes.data.items || [];
+        setAcademicYears(years);
+        if (!selectedAcademicYearId && years.length > 0) {
+          const current = years.find((y) => y.is_current) || years[0];
+          setSelectedAcademicYearId(String(current.id));
+        }
       }
       setError(null);
     } catch (err) {
@@ -612,7 +625,7 @@ const TeacherAssignmentsPage = () => {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [selectedAcademicYearId]);
 
   // Filter assignments
   const filteredAssignments = assignments.filter(a => {
@@ -632,7 +645,10 @@ const TeacherAssignmentsPage = () => {
 
   // Handle create
   const handleCreate = async (formData) => {
-    await createTeachingAssignment(formData);
+    await createTeachingAssignment({
+      ...formData,
+      academic_year_id: selectedAcademicYearId ? parseInt(selectedAcademicYearId, 10) : undefined
+    });
     fetchData();
   };
 
@@ -731,6 +747,16 @@ const TeacherAssignmentsPage = () => {
               </div>
               <div className="flex gap-2">
                 <select
+                  value={selectedAcademicYearId}
+                  onChange={(e) => setSelectedAcademicYearId(e.target.value)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                >
+                  <option value="">All Years</option>
+                  {academicYears.map((y) => (
+                    <option key={y.id} value={y.id}>{y.name}</option>
+                  ))}
+                </select>
+                <select
                   value={gradeFilter}
                   onChange={(e) => setGradeFilter(e.target.value)}
                   className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
@@ -809,6 +835,7 @@ const TeacherAssignmentsPage = () => {
         isOpen={createModal}
         teachers={teachers}
         grades={grades}
+        academicYearId={selectedAcademicYearId}
         onClose={() => setCreateModal(false)}
         onSave={handleCreate}
       />
@@ -818,6 +845,7 @@ const TeacherAssignmentsPage = () => {
         assignment={editModal.assignment}
         teachers={teachers}
         grades={grades}
+        academicYearId={selectedAcademicYearId}
         onClose={() => setEditModal({ open: false, assignment: null })}
         onSave={handleEdit}
       />

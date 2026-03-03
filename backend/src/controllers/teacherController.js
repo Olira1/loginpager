@@ -22,6 +22,65 @@ const verifyTeachingAssignment = async (teacherId, classId, subjectId) => {
   return assignments.length > 0 ? assignments[0] : null;
 };
 
+const listAcademicYears = async (req, res) => {
+  try {
+    const teacherId = req.user.id;
+    const [years] = await pool.query(
+      `SELECT DISTINCT ay.id, ay.name, ay.start_date, ay.end_date, ay.is_current
+       FROM teaching_assignments ta
+       JOIN academic_years ay ON ay.id = ta.academic_year_id
+       WHERE ta.teacher_id = ?
+       ORDER BY ay.start_date DESC, ay.id DESC`,
+      [teacherId]
+    );
+    return res.status(200).json({
+      success: true,
+      data: { items: years },
+      error: null
+    });
+  } catch (error) {
+    console.error('List teacher academic years error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch academic years.' }
+    });
+  }
+};
+
+const listSemesters = async (req, res) => {
+  try {
+    const teacherId = req.user.id;
+    const { academic_year_id } = req.query;
+    let query = `
+      SELECT DISTINCT s.id, s.name, s.semester_number, s.academic_year_id, ay.name as academic_year_name
+      FROM teaching_assignments ta
+      JOIN semesters s ON s.academic_year_id = ta.academic_year_id
+      JOIN academic_years ay ON ay.id = s.academic_year_id
+      WHERE ta.teacher_id = ?
+    `;
+    const params = [teacherId];
+    if (academic_year_id) {
+      query += ' AND s.academic_year_id = ?';
+      params.push(academic_year_id);
+    }
+    query += ' ORDER BY ay.start_date DESC, s.semester_number ASC, s.id ASC';
+    const [items] = await pool.query(query, params);
+    return res.status(200).json({
+      success: true,
+      data: { items },
+      error: null
+    });
+  } catch (error) {
+    console.error('List teacher semesters error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch semesters.' }
+    });
+  }
+};
+
 // ==========================================
 // VIEW ASSIGNED CLASSES
 // ==========================================
@@ -33,19 +92,25 @@ const verifyTeachingAssignment = async (teacherId, classId, subjectId) => {
 const listAssignedClasses = async (req, res) => {
   try {
     const teacherId = req.user.id;
+    const { academic_year_id } = req.query;
 
-    const [assignments] = await pool.query(
-      `SELECT DISTINCT 
-         c.id as class_id, c.name as class_name,
+    let classesQuery = `SELECT DISTINCT
+         c.id as class_id, c.name as class_name, c.academic_year_id,
          g.id as grade_id, g.name as grade_name, g.level as grade_level,
+         ay.name as academic_year_name,
          (SELECT COUNT(*) FROM students s WHERE s.class_id = c.id) as student_count
        FROM teaching_assignments ta
        JOIN classes c ON ta.class_id = c.id
        JOIN grades g ON c.grade_id = g.id
-       WHERE ta.teacher_id = ?
-       ORDER BY g.level, c.name`,
-      [teacherId]
-    );
+       JOIN academic_years ay ON ay.id = c.academic_year_id
+       WHERE ta.teacher_id = ?`;
+    const classParams = [teacherId];
+    if (academic_year_id) {
+      classesQuery += ' AND ta.academic_year_id = ?';
+      classParams.push(academic_year_id);
+    }
+    classesQuery += ' ORDER BY g.level, c.name';
+    const [assignments] = await pool.query(classesQuery, classParams);
 
     // Group subjects per class
     const classMap = new Map();
@@ -54,6 +119,8 @@ const listAssignedClasses = async (req, res) => {
         classMap.set(a.class_id, {
           class_id: a.class_id,
           class_name: a.class_name,
+          academic_year_id: a.academic_year_id,
+          academic_year_name: a.academic_year_name,
           grade: { id: a.grade_id, name: a.grade_name, level: a.grade_level },
           student_count: a.student_count,
           subjects: []
@@ -67,8 +134,9 @@ const listAssignedClasses = async (req, res) => {
         `SELECT s.id, s.name
          FROM teaching_assignments ta
          JOIN subjects s ON ta.subject_id = s.id
-         WHERE ta.teacher_id = ? AND ta.class_id = ?`,
-        [teacherId, classId]
+         WHERE ta.teacher_id = ? AND ta.class_id = ?
+         ${academic_year_id ? 'AND ta.academic_year_id = ?' : ''}`,
+        academic_year_id ? [teacherId, classId, academic_year_id] : [teacherId, classId]
       );
       classData.subjects = subjects;
     }
@@ -99,20 +167,25 @@ const listAssignedClasses = async (req, res) => {
 const listAssignedSubjects = async (req, res) => {
   try {
     const teacherId = req.user.id;
+    const { academic_year_id } = req.query;
 
-    const [assignments] = await pool.query(
-      `SELECT 
+    let subjectsQuery = `SELECT
          s.id as subject_id, s.name as subject_name,
-         c.id as class_id, c.name as class_name,
-         g.name as grade_name
+         c.id as class_id, c.name as class_name, c.academic_year_id,
+         g.name as grade_name, ay.name as academic_year_name
        FROM teaching_assignments ta
        JOIN subjects s ON ta.subject_id = s.id
        JOIN classes c ON ta.class_id = c.id
        JOIN grades g ON c.grade_id = g.id
-       WHERE ta.teacher_id = ?
-       ORDER BY s.name, g.level, c.name`,
-      [teacherId]
-    );
+       JOIN academic_years ay ON ay.id = c.academic_year_id
+       WHERE ta.teacher_id = ?`;
+    const subjectParams = [teacherId];
+    if (academic_year_id) {
+      subjectsQuery += ' AND ta.academic_year_id = ?';
+      subjectParams.push(academic_year_id);
+    }
+    subjectsQuery += ' ORDER BY s.name, g.level, c.name';
+    const [assignments] = await pool.query(subjectsQuery, subjectParams);
 
     // Group classes per subject
     const subjectMap = new Map();
@@ -128,7 +201,9 @@ const listAssignedSubjects = async (req, res) => {
       subjectMap.get(a.subject_id).assigned_classes.push({
         class_id: a.class_id,
         class_name: a.class_name,
-        grade_name: a.grade_name
+        grade_name: a.grade_name,
+        academic_year_id: a.academic_year_id,
+        academic_year_name: a.academic_year_name
       });
     }
 
@@ -1244,20 +1319,23 @@ const submitGrades = async (req, res) => {
  */
 const getSubmissionStatus = async (req, res) => {
   try {
-    const { semester_id } = req.query;
+    const { semester_id, academic_year_id } = req.query;
     const teacherId = req.user.id;
 
     // Get all assignments for this teacher
-    const [assignments] = await pool.query(
-      `SELECT ta.id, ta.class_id, c.name as class_name,
+    let assignmentsQuery = `SELECT ta.id, ta.class_id, c.name as class_name,
               ta.subject_id, s.name as subject_name,
               (SELECT COUNT(*) FROM students st WHERE st.class_id = ta.class_id) as total_students
        FROM teaching_assignments ta
        JOIN classes c ON ta.class_id = c.id
        JOIN subjects s ON ta.subject_id = s.id
-       WHERE ta.teacher_id = ?`,
-      [teacherId]
-    );
+       WHERE ta.teacher_id = ?`;
+    const assignmentParams = [teacherId];
+    if (academic_year_id) {
+      assignmentsQuery += ' AND ta.academic_year_id = ?';
+      assignmentParams.push(academic_year_id);
+    }
+    const [assignments] = await pool.query(assignmentsQuery, assignmentParams);
 
     const items = [];
     for (const a of assignments) {
@@ -1410,6 +1488,8 @@ const getComputedAverages = async (req, res) => {
 };
 
 module.exports = {
+  listAcademicYears,
+  listSemesters,
   listAssignedClasses,
   listAssignedSubjects,
   getWeightSuggestions,

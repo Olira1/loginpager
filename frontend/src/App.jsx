@@ -15,7 +15,8 @@ import {
   SchoolsPage, 
   SchoolHeadsPage,
   PromotionCriteriaPage, 
-  StatisticsPage 
+  StatisticsPage,
+  AcademicYearsPage
 } from './pages/admin';
 
 // School Head Pages
@@ -27,7 +28,8 @@ import {
   TeachersPage,
   TeacherAssignmentsPage,
   RegistrarsPage,
-  StoreHouseUsersPage
+  StoreHouseUsersPage,
+  LifecyclePage as SchoolLifecyclePage
 } from './pages/schoolHead';
 
 // Teacher Pages
@@ -49,7 +51,8 @@ import {
   CompilePublishPage,
   ClassSnapshotPage,
   StudentReportsPage,
-  SendRosterPage
+  SendRosterPage,
+  ClassHeadLifecyclePage
 } from './pages/classHead';
 
 // Student Pages
@@ -76,7 +79,8 @@ import {
   RegistrarTeachersPage,
   RegistrarParentsPage,
   StudentUploadPage,
-  TeacherUploadPage
+  TeacherUploadPage,
+  RegistrarLifecyclePage
 } from './pages/registrar';
 
 // Parent Pages
@@ -117,6 +121,7 @@ function App() {
             <Route path="schools/:id" element={<SchoolsPage />} />
             <Route path="school-heads" element={<SchoolHeadsPage />} />
             <Route path="promotion-criteria" element={<PromotionCriteriaPage />} />
+            <Route path="academic-years" element={<AcademicYearsPage />} />
             <Route path="statistics" element={<StatisticsPage />} />
             <Route path="profile" element={<Dashboard />} />
           </Route>
@@ -139,6 +144,7 @@ function App() {
             <Route path="assignments" element={<TeacherAssignmentsPage />} />
             <Route path="registrars" element={<RegistrarsPage />} />
             <Route path="store-house-users" element={<StoreHouseUsersPage />} />
+            <Route path="lifecycle" element={<SchoolLifecyclePage />} />
             <Route path="profile" element={<Dashboard />} />
           </Route>
 
@@ -177,6 +183,7 @@ function App() {
             <Route path="snapshot" element={<ClassSnapshotPage />} />
             <Route path="reports" element={<StudentReportsPage />} />
             <Route path="roster" element={<SendRosterPage />} />
+            <Route path="lifecycle" element={<ClassHeadLifecyclePage />} />
             <Route path="profile" element={<Dashboard />} />
           </Route>
 
@@ -241,6 +248,7 @@ function App() {
             <Route path="parents" element={<RegistrarParentsPage />} />
             <Route path="upload/students" element={<StudentUploadPage />} />
             <Route path="upload/teachers" element={<TeacherUploadPage />} />
+            <Route path="lifecycle" element={<RegistrarLifecyclePage />} />
           </Route>
 
           {/* Legacy dashboard route - redirect based on role */}
