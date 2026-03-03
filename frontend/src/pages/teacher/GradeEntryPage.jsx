@@ -279,20 +279,37 @@ const GradeEntryPage = () => {
   // Check if any grades have been entered (either saved or edited)
   const hasAnyGrades = () => {
     if (!gradeData?.items) return false;
-    // Check if any student has at least one non-null score (saved marks)
     for (const student of gradeData.items) {
       for (const grade of (student.grades || [])) {
         if (grade.score != null) return true;
       }
     }
-    // Also check if any edited (unsaved) scores exist
     return Object.values(editedScores).some(v => v !== '' && v != null);
+  };
+
+  // Check if ALL marks are filled for ALL students (all assessment types)
+  const hasAllMarksFilled = () => {
+    if (!gradeData?.items || !assessmentTypes?.length) return false;
+    for (const student of gradeData.items) {
+      for (const at of assessmentTypes) {
+        const val = getCellValue(student, at.id);
+        const score = parseFloat(val);
+        if (val === '' || val == null || Number.isNaN(score) || score < 0) {
+          return false;
+        }
+      }
+    }
+    return true;
   };
 
   // Submit grades for approval
   const handleSubmit = async () => {
     if (!hasAnyGrades()) {
       setError('Cannot submit: no grades have been entered yet. Please enter marks first.');
+      return;
+    }
+    if (!hasAllMarksFilled()) {
+      setError('Cannot submit: please fill all marks for all students before submitting. Every student must have a score for each assessment type (e.g. Mid-Exam, Final-Exam, Project).');
       return;
     }
     if (!window.confirm('Submit all grades for Class Head approval? You cannot modify them after submission.')) return;
@@ -329,6 +346,7 @@ const GradeEntryPage = () => {
   };
 
   const isSubmitted = gradeData?.items?.some(s => s.submission_status === 'submitted' || s.submission_status === 'approved');
+  const isRevisionRequested = gradeData?.items?.some(s => s.submission_status === 'rejected');
 
   if (loading) {
     return (
@@ -426,6 +444,14 @@ const GradeEntryPage = () => {
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center gap-3 text-blue-700">
           <Send className="w-5 h-5 flex-shrink-0" />
           <span className="text-sm">Grades have been submitted for approval. Editing is disabled.</span>
+        </div>
+      )}
+
+      {/* Revision Requested Notice */}
+      {isRevisionRequested && !isSubmitted && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3 text-amber-800">
+          <AlertCircle className="w-5 h-5 flex-shrink-0" />
+          <span className="text-sm">Class Head has requested revision. Please make the necessary changes and re-submit.</span>
         </div>
       )}
 

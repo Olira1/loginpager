@@ -1250,7 +1250,9 @@ const updateGrade = async (req, res) => {
       [gradeInfo[0].teaching_assignment_id, gradeInfo[0].semester_id]
     );
 
-    if (submissions.length > 0 && submissions[0].status !== 'draft') {
+    // Allow editing when draft or rejected (revision requested); block when submitted or approved
+    const editableStatuses = ['draft', 'rejected'];
+    if (submissions.length > 0 && !editableStatuses.includes(submissions[0].status)) {
       return res.status(409).json({
         success: false,
         data: null,
@@ -1363,7 +1365,9 @@ const deleteGrade = async (req, res) => {
       [gradeInfo[0].teaching_assignment_id, gradeInfo[0].semester_id]
     );
 
-    if (submissions.length > 0 && submissions[0].status !== 'draft') {
+    // Allow editing when draft or rejected (revision requested); block when submitted or approved
+    const editableStatuses = ['draft', 'rejected'];
+    if (submissions.length > 0 && !editableStatuses.includes(submissions[0].status)) {
       return res.status(409).json({
         success: false,
         data: null,

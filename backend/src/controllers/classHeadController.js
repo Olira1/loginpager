@@ -283,7 +283,7 @@ const getSubmissionChecklist = async (req, res) => {
     // Get semester info
     const [semesterInfo] = await pool.query('SELECT name FROM semesters WHERE id = ?', [semester_id]);
 
-    // Get all teaching assignments for this class
+    // Get all teaching assignments for this class (filter by academic year for correctness)
     const [assignments] = await pool.query(
       `SELECT ta.id, ta.subject_id, s.name as subject_name,
               ta.teacher_id, u.name as teacher_name,
@@ -291,8 +291,8 @@ const getSubmissionChecklist = async (req, res) => {
        FROM teaching_assignments ta
        JOIN subjects s ON ta.subject_id = s.id
        JOIN users u ON ta.teacher_id = u.id
-       WHERE ta.class_id = ?`,
-      [classInfo.id]
+       WHERE ta.class_id = ? AND ta.academic_year_id = ?`,
+      [classInfo.id, classInfo.academic_year_id]
     );
 
     const subjects = [];
@@ -459,17 +459,8 @@ const getStudentRankings = async (req, res) => {
 const reviewSubmission = async (req, res) => {
   try {
     const { submission_id } = req.params;
-    const classInfo = await getClassHeadClass(req.user.id);
-    
-    if (!classInfo) {
-      return res.status(403).json({
-        success: false,
-        data: null,
-        error: { code: 'FORBIDDEN', message: 'You are not assigned as class head.' }
-      });
-    }
 
-    // Get submission details
+    // Get submission details first
     const [submissions] = await pool.query(
       `SELECT gs.*, ta.subject_id, s.name as subject_name, 
               ta.teacher_id, u.name as teacher_name, ta.class_id
@@ -490,23 +481,38 @@ const reviewSubmission = async (req, res) => {
     }
 
     const submission = submissions[0];
+    const userId = Number(req.user.id);
 
-    // Verify this submission is for class head's class
-    if (submission.class_id !== classInfo.id) {
-      return res.status(403).json({
-        success: false,
-        data: null,
-        error: { code: 'FORBIDDEN', message: 'This submission is not for your class.' }
-      });
+    // Verify user is class head for this submission's class, OR has a teaching assignment (can view)
+    const [classCheck] = await pool.query(
+      'SELECT class_head_id FROM classes WHERE id = ?',
+      [submission.class_id]
+    );
+    const isClassHead = classCheck[0] && Number(classCheck[0].class_head_id) === userId;
+    if (!isClassHead) {
+      const [teacherCheck] = await pool.query(
+        'SELECT 1 FROM teaching_assignments WHERE teacher_id = ? AND class_id = ? LIMIT 1',
+        [userId, submission.class_id]
+      );
+      if (teacherCheck.length === 0) {
+        return res.status(403).json({
+          success: false,
+          data: null,
+          error: { code: 'FORBIDDEN', message: 'This submission is not for your class.' }
+        });
+      }
     }
 
-    // Get students with their combined subject scores
+    const classInfo = { id: submission.class_id };
+    const semesterId = submission.semester_id;
+
+    // Get students with their combined subject scores (filter marks by submission's semester)
     const [students] = await pool.query(
       `SELECT s.id as student_id, u.name as student_name,
               SUM(m.score / m.max_score * COALESCE(aw.weight_percent, at.default_weight_percent)) as subject_score
        FROM students s
        JOIN users u ON s.user_id = u.id
-       LEFT JOIN marks m ON m.student_id = s.id AND m.teaching_assignment_id = ?
+       LEFT JOIN marks m ON m.student_id = s.id AND m.teaching_assignment_id = ? AND m.semester_id = ?
        LEFT JOIN assessment_types at ON m.assessment_type_id = at.id
        LEFT JOIN assessment_weights aw ON aw.teaching_assignment_id = m.teaching_assignment_id 
                                        AND aw.assessment_type_id = m.assessment_type_id 
@@ -514,7 +520,7 @@ const reviewSubmission = async (req, res) => {
        WHERE s.class_id = ?
        GROUP BY s.id, u.name
        ORDER BY u.name`,
-      [submission.teaching_assignment_id, classInfo.id]
+      [submission.teaching_assignment_id, semesterId, classInfo.id]
     );
 
     // Calculate statistics (parse to float since MySQL returns DECIMALs as strings)
@@ -566,17 +572,7 @@ const approveSubmission = async (req, res) => {
   try {
     const { submission_id } = req.params;
     const { remarks } = req.body;
-    const classInfo = await getClassHeadClass(req.user.id);
-    
-    if (!classInfo) {
-      return res.status(403).json({
-        success: false,
-        data: null,
-        error: { code: 'FORBIDDEN', message: 'You are not assigned as class head.' }
-      });
-    }
 
-    // Verify submission belongs to class
     const [submissions] = await pool.query(
       `SELECT gs.*, ta.class_id FROM grade_submissions gs
        JOIN teaching_assignments ta ON gs.teaching_assignment_id = ta.id
@@ -592,7 +588,11 @@ const approveSubmission = async (req, res) => {
       });
     }
 
-    if (submissions[0].class_id !== classInfo.id) {
+    const [classCheck] = await pool.query(
+      'SELECT class_head_id FROM classes WHERE id = ?',
+      [submissions[0].class_id]
+    );
+    if (!classCheck[0] || classCheck[0].class_head_id !== req.user.id) {
       return res.status(403).json({
         success: false,
         data: null,
@@ -636,15 +636,6 @@ const rejectSubmission = async (req, res) => {
   try {
     const { submission_id } = req.params;
     const { reason } = req.body;
-    const classInfo = await getClassHeadClass(req.user.id);
-    
-    if (!classInfo) {
-      return res.status(403).json({
-        success: false,
-        data: null,
-        error: { code: 'FORBIDDEN', message: 'You are not assigned as class head.' }
-      });
-    }
 
     if (!reason) {
       return res.status(400).json({
@@ -654,7 +645,6 @@ const rejectSubmission = async (req, res) => {
       });
     }
 
-    // Verify submission belongs to class
     const [submissions] = await pool.query(
       `SELECT gs.*, ta.class_id FROM grade_submissions gs
        JOIN teaching_assignments ta ON gs.teaching_assignment_id = ta.id
@@ -662,11 +652,23 @@ const rejectSubmission = async (req, res) => {
       [submission_id]
     );
 
-    if (submissions.length === 0 || submissions[0].class_id !== classInfo.id) {
+    if (submissions.length === 0) {
       return res.status(404).json({
         success: false,
         data: null,
         error: { code: 'NOT_FOUND', message: 'Submission not found.' }
+      });
+    }
+
+    const [classCheck] = await pool.query(
+      'SELECT class_head_id FROM classes WHERE id = ?',
+      [submissions[0].class_id]
+    );
+    if (!classCheck[0] || classCheck[0].class_head_id !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        data: null,
+        error: { code: 'FORBIDDEN', message: 'This submission is not for your class.' }
       });
     }
 

@@ -106,22 +106,22 @@ const SubmissionsPage = () => {
 
   // Open review modal for a submission
   const handleReview = async (subject) => {
-    // Find the submission ID from the checklist - we need a submitted submission
-    // The submission_id may not be directly on the subject object, so we use the subject_id
-    // The API expects a submission ID, but our checklist data may have a submission object
-    // For now, we'll look for the submission through the status
     if (subject.status === 'pending' || subject.status === 'draft') {
       setError('This subject has not been submitted yet. Only submitted grades can be reviewed.');
+      return;
+    }
+
+    const submissionId = subject.submission_id;
+    if (!submissionId) {
+      setError('Submission ID not found. Please refresh the page and try again.');
       return;
     }
 
     try {
       setReviewLoading(true);
       setShowReviewModal(true);
+      setError(null);
 
-      // We need the submission_id. If the checklist includes it, use it.
-      // Otherwise, we'll need to fetch it. For now, assume subject has submission_id.
-      const submissionId = subject.submission_id || subject.subject_id;
       const response = await reviewSubmission(submissionId);
 
       if (response.success) {
@@ -129,7 +129,8 @@ const SubmissionsPage = () => {
       }
     } catch (err) {
       console.error('Error loading review data:', err);
-      setError('Failed to load submission details for review.');
+      const errMsg = err.response?.data?.error?.message || err.message || 'Failed to load submission details for review.';
+      setError(errMsg);
       setShowReviewModal(false);
     } finally {
       setReviewLoading(false);
