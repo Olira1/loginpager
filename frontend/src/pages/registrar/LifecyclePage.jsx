@@ -81,11 +81,16 @@ const RegistrarLifecyclePage = () => {
     promotion_criteria_id: form.promotion_criteria_id ? Number(form.promotion_criteria_id) : null
   };
 
+  // Target classes for promoted students: one grade level up (e.g. Grade 9 -> Grade 10)
   const classOptions = useMemo(() => {
     const toYear = Number(form.to_academic_year_id);
-    const gradeLevel = Number(form.source_grade_level);
+    const sourceLevel = Number(form.source_grade_level);
     if (!toYear) return [];
-    const gradeIds = (metadata.grades || []).filter((g) => Number(g.level) === gradeLevel).map((g) => Number(g.id));
+    // Promoted students go to next grade: source 9 -> target 10
+    const targetLevel = sourceLevel > 0 ? sourceLevel + 1 : null;
+    const gradeIds = targetLevel
+      ? (metadata.grades || []).filter((g) => Number(g.level) === targetLevel).map((g) => Number(g.id))
+      : (metadata.grades || []).map((g) => Number(g.id));
     return (metadata.classes || []).filter((c) => Number(c.academic_year_id) === toYear && (gradeIds.length === 0 || gradeIds.includes(Number(c.grade_id))));
   }, [form.to_academic_year_id, form.source_grade_level, metadata.classes, metadata.grades]);
 

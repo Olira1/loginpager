@@ -7,7 +7,7 @@ import {
   Archive, RefreshCw, AlertCircle,
   Users, Eye, ArrowLeft, BarChart3
 } from 'lucide-react';
-import { listRosters, getRoster } from '../../services/storeHouseService';
+import { listRosters, getRoster, getAvailablePeriods } from '../../services/storeHouseService';
 
 // Alternating color bands for student groups (matching school roster design)
 const studentBandColors = [
@@ -22,19 +22,39 @@ const RostersPage = () => {
   const [selectedRosterId, setSelectedRosterId] = useState(null);
   const [rosterDetail, setRosterDetail] = useState(null);       // primary roster (clicked)
   const [companionDetail, setCompanionDetail] = useState(null);  // other semester for same class
+  const [semesters, setSemesters] = useState([]);
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState('');
+  const [selectedSemesterId, setSelectedSemesterId] = useState('');
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetchRosters();
+    const loadPeriods = async () => {
+      try {
+        const res = await getAvailablePeriods();
+        if (res.success && res.data?.semesters) {
+          setSemesters(res.data.semesters || []);
+        }
+      } catch (err) {
+        console.error('Error loading periods:', err);
+      }
+    };
+    loadPeriods();
   }, []);
+
+  useEffect(() => {
+    fetchRosters();
+  }, [selectedAcademicYearId, selectedSemesterId]);
 
   const fetchRosters = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await listRosters();
+      const params = {};
+      if (selectedAcademicYearId) params.academic_year_id = selectedAcademicYearId;
+      if (selectedSemesterId) params.semester_id = selectedSemesterId;
+      const res = await listRosters(params);
       if (res.success) {
         setRosters(res.data.items || []);
       }
@@ -58,12 +78,13 @@ const RostersPage = () => {
       if (res.success) {
         setRosterDetail(res.data);
 
-        // Find the companion roster (same class, different semester)
+        // Find the companion roster (same class + same academic year, different semester)
         const clickedRoster = rosters.find(r => r.roster_id === rosterId);
         if (clickedRoster) {
           const companion = rosters.find(
             r => r.roster_id !== rosterId &&
-                 r.class?.id === clickedRoster.class?.id
+                 r.class?.id === clickedRoster.class?.id &&
+                 r.academic_year === clickedRoster.academic_year
           );
           if (companion) {
             try {
@@ -311,9 +332,16 @@ const RostersPage = () => {
                     ? ((parseFloat(s1.average) || 0) + (parseFloat(s2.average) || 0)) / 2
                     : parseFloat(s1?.average ?? s2?.average) || null;
 
-                  // Remark icon
-                  const remark = s1?.remark || s2?.remark;
-                  const remarkIcon = remark === 'Promoted' ? '↑' : remark === 'Not Promoted' ? '' : '';
+                  // Normalize remark to full text (handles 'P'/'R' or 'Promoted'/'Not Promoted')
+                  const toRemarkText = (r) => {
+                    if (!r) return null;
+                    if (r === 'Promoted' || r === 'P') return 'Promoted';
+                    if (r === 'Not Promoted' || r === 'R') return 'Not Promoted';
+                    return r;
+                  };
+                  const sem1Rmark = toRemarkText(s1?.remark);
+                  const sem2Rmark = toRemarkText(s2?.remark);
+                  const avgRmark = avgAverage != null ? (avgAverage >= 50 ? 'Promoted' : 'Not Promoted') : (sem1Rmark || sem2Rmark);
 
                   return (
                     <React.Fragment key={student.student_id || idx}>
@@ -352,12 +380,12 @@ const RostersPage = () => {
                         <td rowSpan={3} className="border border-gray-300 px-2 py-1.5 text-center text-gray-700 align-middle">
                           {s1?.conduct === 'Good' ? 'A' : (s1?.conduct || '')}
                         </td>
-                        <td rowSpan={3} className="border border-gray-300 px-2 py-1.5 text-center align-middle">
-                          {remark === 'Promoted' ? (
-                            <span className="text-green-600 font-bold">↑</span>
-                          ) : remark ? (
-                            <span className="text-red-500 text-xs">{remark}</span>
-                          ) : ''}
+                        <td className="border border-gray-300 px-2 py-1.5 text-center align-middle">
+                          {sem1Rmark ? (
+                            <span className={sem1Rmark === 'Promoted' ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>
+                              {sem1Rmark}
+                            </span>
+                          ) : '—'}
                         </td>
                       </tr>
 
@@ -381,6 +409,13 @@ const RostersPage = () => {
                         <td className="border border-gray-300 px-2 py-1.5 text-center text-gray-700">
                           {s2 ? (s2.absent_days ?? 0) : ''}
                         </td>
+                        <td className="border border-gray-300 px-2 py-1.5 text-center align-middle">
+                          {sem2Rmark ? (
+                            <span className={sem2Rmark === 'Promoted' ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>
+                              {sem2Rmark}
+                            </span>
+                          ) : '—'}
+                        </td>
                       </tr>
 
                       {/* Row 3: Average */}
@@ -401,6 +436,13 @@ const RostersPage = () => {
                           {avgRankMap[student.student_id || student.name] || ''}
                         </td>
                         <td className="border border-gray-300 px-2 py-1.5 text-center text-gray-700"></td>
+                        <td className="border border-gray-300 px-2 py-1.5 text-center align-middle">
+                          {avgRmark ? (
+                            <span className={avgRmark === 'Promoted' ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>
+                              {avgRmark}
+                            </span>
+                          ) : '—'}
+                        </td>
                       </tr>
                     </React.Fragment>
                   );
@@ -438,14 +480,58 @@ const RostersPage = () => {
         </div>
       )}
 
-      {/* Overview stat */}
-      <div className="bg-white border border-gray-200 rounded-xl p-4 flex items-center gap-6">
+      {/* Filters + Overview stat + Refresh */}
+      <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-2">
           <Archive className="w-5 h-5 text-indigo-500" />
           <div>
             <p className="text-xs text-gray-500">Total Rosters</p>
             <p className="text-lg font-bold text-gray-900">{rosters.length}</p>
           </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {semesters.length > 0 && (
+            <>
+              <select
+                value={selectedAcademicYearId}
+                onChange={(e) => {
+                  const yearId = e.target.value;
+                  setSelectedAcademicYearId(yearId);
+                  const first = semesters.find((s) => String(s.academic_year_id) === String(yearId));
+                  setSelectedSemesterId(first ? String(first.id) : '');
+                }}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              >
+                <option value="">All Years</option>
+                {[...new Set(semesters.map((s) => s.academic_year_id))].map((yearId) => {
+                  const s = semesters.find((x) => String(x.academic_year_id) === String(yearId));
+                  return (
+                    <option key={yearId} value={yearId}>{s?.academic_year_name || `Year ${yearId}`}</option>
+                  );
+                })}
+              </select>
+              <select
+                value={selectedSemesterId}
+                onChange={(e) => {
+                  const sem = semesters.find((s) => String(s.id) === e.target.value);
+                  setSelectedSemesterId(e.target.value);
+                  if (sem) setSelectedAcademicYearId(String(sem.academic_year_id));
+                }}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              >
+                <option value="">All Semesters</option>
+                {semesters.filter((s) => !selectedAcademicYearId || String(s.academic_year_id) === String(selectedAcademicYearId)).map((s) => (
+                  <option key={s.id} value={s.id}>{s.name || `Semester ${s.semester_number}`}</option>
+                ))}
+              </select>
+            </>
+          )}
+          <button
+            onClick={fetchRosters}
+            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors"
+          >
+            <RefreshCw className="w-4 h-4" /> Refresh
+          </button>
         </div>
       </div>
 

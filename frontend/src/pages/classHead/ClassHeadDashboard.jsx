@@ -3,7 +3,7 @@
 // API endpoints used: GET /class-head/students, GET /class-head/submissions/checklist
 
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LayoutDashboard,
   Users,
@@ -112,6 +112,7 @@ const StatusBadge = ({ status }) => {
 
 const ClassHeadDashboard = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
 
   // State
@@ -183,22 +184,33 @@ const ClassHeadDashboard = () => {
         }
 
         setSemesters(items);
-        if (items[0]) {
-          const yearId = items[0].academic_year_id;
-          setSelectedSemesterId(String(items[0].id));
+        if (items.length > 0) {
+          const urlYearId = searchParams.get('academic_year_id');
+          const urlYearMatch = urlYearId && items.some((s) => String(s.academic_year_id) === String(urlYearId));
+          const firstSemester = urlYearMatch
+            ? items.find((s) => String(s.academic_year_id) === String(urlYearId)) || items[0]
+            : items[0];
+          const yearId = firstSemester.academic_year_id;
+          setSelectedSemesterId(String(firstSemester.id));
           setSelectedAcademicYearId(String(yearId));
+          // Sync URL when using default (no param in URL) so selection persists across navigation
+          if (!urlYearId) setSearchParams({ academic_year_id: String(yearId) });
           // Check scope: if teacher for this year, redirect to teacher portal
           const scopeRes = await getScope(yearId);
           if (scopeRes.success && scopeRes.data?.scope === 'teacher') {
             navigate(`/teacher?academic_year_id=${yearId}`);
+            return;
           }
+        } else {
+          setLoading(false);
         }
       } catch (err) {
         console.error('Error loading semesters:', err);
+        setLoading(false);
       }
     };
     loadSemesters();
-  }, [navigate]);
+  }, [navigate, searchParams]);
 
   useEffect(() => {
     fetchData();
@@ -210,6 +222,9 @@ const ClassHeadDashboard = () => {
     }
     return acc;
   }, []);
+
+  // Preserve academic year when navigating to other class head pages
+  const yearParam = selectedAcademicYearId ? `?academic_year_id=${selectedAcademicYearId}` : (searchParams.get('academic_year_id') ? `?academic_year_id=${searchParams.get('academic_year_id')}` : '');
 
   const semestersForSelectedYear = semesters.filter(
     (sem) => String(sem.academic_year_id) === String(selectedAcademicYearId)
@@ -280,6 +295,7 @@ const ClassHeadDashboard = () => {
               setSelectedAcademicYearId(yearId);
               const firstSemester = semesters.find((sem) => String(sem.academic_year_id) === String(yearId));
               if (firstSemester) setSelectedSemesterId(String(firstSemester.id));
+              setSearchParams({ academic_year_id: yearId });
             }}
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
           >
@@ -321,7 +337,7 @@ const ClassHeadDashboard = () => {
           value={students.length}
           sublabel={classInfo ? `In ${classInfo.name}` : 'In your class'}
           color="indigo"
-          onClick={() => navigate('/class-head/students')}
+          onClick={() => navigate(`/class-head/students${yearParam}`)}
         />
         <StatCard
           icon={CheckSquare}
@@ -329,7 +345,7 @@ const ClassHeadDashboard = () => {
           value={submissions ? `${submissions.submitted_count}/${submissions.total_subjects}` : '—'}
           sublabel="Grades submitted"
           color="green"
-          onClick={() => navigate('/class-head/submissions')}
+          onClick={() => navigate(`/class-head/submissions${yearParam}`)}
         />
         <StatCard
           icon={Clock}
@@ -337,7 +353,7 @@ const ClassHeadDashboard = () => {
           value={submissions?.pending_count ?? '—'}
           sublabel="Awaiting teacher submissions"
           color="orange"
-          onClick={() => navigate('/class-head/submissions')}
+          onClick={() => navigate(`/class-head/submissions${yearParam}`)}
         />
         <StatCard
           icon={BarChart3}
@@ -345,7 +361,7 @@ const ClassHeadDashboard = () => {
           value={submissions?.total_subjects ?? '—'}
           sublabel="Assigned to class"
           color="blue"
-          onClick={() => navigate('/class-head/snapshot')}
+          onClick={() => navigate(`/class-head/snapshot${yearParam}`)}
         />
       </div>
 
@@ -357,42 +373,42 @@ const ClassHeadDashboard = () => {
             icon={FileText}
             title="Enter Grades"
             description="Enter or edit grades for subjects you teach."
-            onClick={() => navigate('/class-head/grades')}
+            onClick={() => navigate(`/class-head/grades${yearParam}`)}
             color="indigo"
           />
           <QuickAction
             icon={CheckSquare}
             title="Review Submissions"
             description="Review, approve, or reject teacher grade submissions."
-            onClick={() => navigate('/class-head/submissions')}
+            onClick={() => navigate(`/class-head/submissions${yearParam}`)}
             color="green"
           />
           <QuickAction
             icon={Send}
             title="Compile & Publish"
             description="Compile final grades and publish results."
-            onClick={() => navigate('/class-head/compile')}
+            onClick={() => navigate(`/class-head/compile${yearParam}`)}
             color="blue"
           />
           <QuickAction
             icon={BarChart3}
             title="Class Snapshot"
             description="View class performance overview with all subject scores."
-            onClick={() => navigate('/class-head/snapshot')}
+            onClick={() => navigate(`/class-head/snapshot${yearParam}`)}
             color="orange"
           />
           <QuickAction
             icon={FileSpreadsheet}
             title="Student Reports"
             description="Generate individual student report cards."
-            onClick={() => navigate('/class-head/reports')}
+            onClick={() => navigate(`/class-head/reports${yearParam}`)}
             color="purple"
           />
           <QuickAction
             icon={Archive}
             title="Send Roster"
             description="Send final roster data to the store house."
-            onClick={() => navigate('/class-head/roster')}
+            onClick={() => navigate(`/class-head/roster${yearParam}`)}
             color="purple"
           />
         </div>
@@ -404,7 +420,7 @@ const ClassHeadDashboard = () => {
           <div className="flex items-center justify-between p-4 border-b border-gray-100">
             <h2 className="text-lg font-semibold text-gray-900">Subject Submission Status</h2>
             <button
-              onClick={() => navigate('/class-head/submissions')}
+              onClick={() => navigate(`/class-head/submissions${yearParam}`)}
               className="text-sm text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1"
             >
               View All

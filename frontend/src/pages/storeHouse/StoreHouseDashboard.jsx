@@ -1,5 +1,5 @@
 // Store House Dashboard - Overview of rosters, students, and transcripts
-// API: GET /store-house/rosters, GET /store-house/students/search, GET /store-house/transcripts
+// API: GET /store-house/rosters, GET /store-house/students/search, GET /store-house/transcripts, GET /store-house/periods
 
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -7,25 +7,50 @@ import {
   Archive, Users, FileText, RefreshCw, AlertCircle,
   ArrowRight, ClipboardList, GraduationCap
 } from 'lucide-react';
-import { listRosters, searchStudents, listTranscripts } from '../../services/storeHouseService';
+import { listRosters, searchStudents, listTranscripts, getAvailablePeriods } from '../../services/storeHouseService';
 
 const StoreHouseDashboard = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState({ rosters: 0, students: 0, transcripts: 0 });
   const [recentRosters, setRecentRosters] = useState([]);
+  const [academicYears, setAcademicYears] = useState([]);
+  const [semesters, setSemesters] = useState([]);
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState('');
+  const [selectedSemesterId, setSelectedSemesterId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetchDashboardData();
+    const loadPeriods = async () => {
+      try {
+        const res = await getAvailablePeriods();
+        if (res.success && res.data) {
+          const years = res.data.academic_years || [];
+          const sems = res.data.semesters || [];
+          setAcademicYears(years);
+          setSemesters(sems);
+        }
+      } catch (err) {
+        console.error('Error loading periods:', err);
+      }
+    };
+    loadPeriods();
   }, []);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [selectedAcademicYearId, selectedSemesterId]);
 
   const fetchDashboardData = async () => {
     setLoading(true);
     setError(null);
     try {
+      const rosterParams = {};
+      if (selectedAcademicYearId) rosterParams.academic_year_id = selectedAcademicYearId;
+      if (selectedSemesterId) rosterParams.semester_id = selectedSemesterId;
+
       const [rostersRes, studentsRes, transcriptsRes] = await Promise.all([
-        listRosters().catch(() => null),
+        listRosters(rosterParams).catch(() => null),
         searchStudents().catch(() => null),
         listTranscripts().catch(() => null),
       ]);
@@ -40,7 +65,6 @@ const StoreHouseDashboard = () => {
         transcripts: transcriptItems.length,
       });
 
-      // Show most recent rosters (up to 5)
       setRecentRosters(rosterItems.slice(0, 5));
     } catch (err) {
       setError('Failed to load dashboard data.');
@@ -95,14 +119,59 @@ const StoreHouseDashboard = () => {
     green: { bg: 'bg-green-50', icon: 'text-green-600', badge: 'bg-green-100 text-green-700' },
   };
 
+  const semestersForYear = semesters.filter((s) => String(s.academic_year_id) === String(selectedAcademicYearId));
+  const yearsFromSemesters = semesters.reduce((acc, s) => {
+    if (!acc.some((y) => String(y.id) === String(s.academic_year_id))) {
+      acc.push({ id: s.academic_year_id, name: s.academic_year_name });
+    }
+    return acc;
+  }, []);
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Store House Dashboard</h1>
-        <p className="text-gray-500 mt-1">
-          Manage long-term academic records, rosters, and student transcripts.
-        </p>
+      {/* Header with filters */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Store House Dashboard</h1>
+          <p className="text-gray-500 mt-1">
+            Manage long-term academic records, rosters, and student transcripts.
+          </p>
+        </div>
+        {yearsFromSemesters.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={selectedAcademicYearId}
+              onChange={(e) => {
+                const yearId = e.target.value;
+                setSelectedAcademicYearId(yearId);
+                const first = semesters.find((s) => String(s.academic_year_id) === String(yearId));
+                if (first) setSelectedSemesterId(String(first.id));
+              }}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            >
+              <option value="">All Years</option>
+              {yearsFromSemesters.map((y) => (
+                <option key={y.id} value={y.id}>{y.name || `Year ${y.id}`}</option>
+              ))}
+            </select>
+            <select
+              value={selectedSemesterId}
+              onChange={(e) => {
+                const sem = semesters.find((s) => String(s.id) === e.target.value);
+                setSelectedSemesterId(e.target.value);
+                if (sem) setSelectedAcademicYearId(String(sem.academic_year_id));
+              }}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            >
+              <option value="">All Semesters</option>
+              {semestersForYear.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name || `Semester ${s.semester_number}`}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {error && (

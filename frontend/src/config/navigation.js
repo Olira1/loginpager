@@ -48,11 +48,6 @@ export const navigationConfig = {
       icon: UserCheck,
     },
     {
-      name: 'Promotion Criteria',
-      path: '/admin/promotion-criteria',
-      icon: Award,
-    },
-    {
       name: 'Academic Years',
       path: '/admin/academic-years',
       icon: Calendar,
@@ -105,6 +100,11 @@ export const navigationConfig = {
       name: 'Store House Users',
       path: '/school/store-house-users',
       icon: Archive,
+    },
+    {
+      name: 'Promotion Criteria',
+      path: '/school/promotion-criteria',
+      icon: Award,
     },
     {
       name: 'Lifecycle',

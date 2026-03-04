@@ -99,8 +99,8 @@ const CompilePublishPage = () => {
   const fetchStudentReport = async (studentId) => {
     try {
       setLoadingReport(true);
-      // Fetch reports for both semesters
-      const [sem1Response, sem2Response] = await Promise.all([
+      // Fetch reports and rankings for both semesters (rankings used as fallback when compile not run)
+      const [sem1Response, sem2Response, rank1Res, rank2Res] = await Promise.all([
         sem1Id ? getStudentReport(studentId, {
           semester_id: sem1Id,
           academic_year_id: parseInt(selectedAcademicYearId),
@@ -111,10 +111,14 @@ const CompilePublishPage = () => {
           academic_year_id: parseInt(selectedAcademicYearId),
           type: 'semester',
         }).catch(() => null) : Promise.resolve(null),
+        sem1Id ? getStudentRankings({ semester_id: sem1Id }).catch(() => null) : Promise.resolve(null),
+        sem2Id ? getStudentRankings({ semester_id: sem2Id }).catch(() => null) : Promise.resolve(null),
       ]);
 
       const sem1Data = sem1Response?.success ? sem1Response.data : null;
       const sem2Data = sem2Response?.success ? sem2Response.data : null;
+      const rank1Items = rank1Res?.success ? rank1Res.data?.items || [] : [];
+      const rank2Items = rank2Res?.success ? rank2Res.data?.items || [] : [];
 
       // Merge subjects from both semesters
       const allSubjectNames = new Set();
@@ -144,6 +148,12 @@ const CompilePublishPage = () => {
       const avgTotal = totalCount > 0 ? (sem1Total + sem2Total) / totalCount : 0;
       const avgAvg = totalCount > 0 ? (sem1Avg + sem2Avg) / totalCount : 0;
 
+      const sem1Rank = sem1Data?.summary?.rank_in_class ?? rank1Items.find((r) => r.student_id === studentId)?.rank ?? null;
+      const sem2Rank = sem2Data?.summary?.rank_in_class ?? rank2Items.find((r) => r.student_id === studentId)?.rank ?? null;
+      const sem1Rmark = sem1Data?.summary?.remark ?? (sem1Avg >= 50 ? 'Promoted' : 'Not Promoted');
+      const sem2Rmark = sem2Data?.summary?.remark ?? (sem2Avg >= 50 ? 'Promoted' : 'Not Promoted');
+      const avgRmark = avgAvg >= 50 ? 'Promoted' : 'Not Promoted';
+
       setStudentReport({
         student: sem1Data?.student || sem2Data?.student,
         subjects: mergedSubjects,
@@ -154,12 +164,15 @@ const CompilePublishPage = () => {
           sem1Avg: Math.round(sem1Avg * 100) / 100,
           sem2Avg: Math.round(sem2Avg * 100) / 100,
           avgAvg: Math.round(avgAvg * 100) / 100,
-          sem1Rank: sem1Data?.summary?.rank_in_class,
-          sem2Rank: sem2Data?.summary?.rank_in_class,
+          sem1Rank,
+          sem2Rank,
           avgRank: averageRankings[studentId] || null,
+          sem1Rmark,
+          sem2Rmark,
+          avgRmark,
           conduct: 'A',
           sem1Absent: 0,
-          sem2Absent: sem2Data ? 1 : 0,
+          sem2Absent: 0,
         },
       });
     } catch (err) {
@@ -299,6 +312,11 @@ const CompilePublishPage = () => {
 
   // Handle publish year results
   const handlePublishYear = async () => {
+    const yearId = selectedAcademicYearId ? parseInt(selectedAcademicYearId, 10) : NaN;
+    if (!yearId || isNaN(yearId)) {
+      setError('Please select an academic year first.');
+      return;
+    }
     if (!window.confirm('This will publish the full year results and can notify students, parents, and the store house. Continue?')) {
       return;
     }
@@ -309,7 +327,7 @@ const CompilePublishPage = () => {
       setSuccessMessage('');
 
       const response = await publishYearResults({
-        academic_year_id: parseInt(selectedAcademicYearId),
+        academic_year_id: yearId,
         notify_students: true,
         notify_parents: true,
         send_to_store_house: true,
@@ -579,13 +597,33 @@ const CompilePublishPage = () => {
                       <td className="px-4 py-2.5 text-center text-sm text-gray-900">{getRankDisplay(studentReport.summary.sem1Rank)}</td>
                       <td className="px-4 py-2.5 text-center text-sm text-gray-900">{getRankDisplay(studentReport.summary.sem2Rank)}</td>
                       <td className="px-4 py-2.5 text-center text-sm text-gray-900">
-                        {studentReport.summary.sem1Rank && studentReport.summary.sem2Rank
+                        {studentReport.summary.avgRank
+                          ? getRankDisplay(studentReport.summary.avgRank)
+                          : studentReport.summary.sem1Rank && studentReport.summary.sem2Rank
                           ? getRankDisplay(Math.round((studentReport.summary.sem1Rank + studentReport.summary.sem2Rank) / 2))
                           : studentReport.summary.sem1Rank
                           ? getRankDisplay(studentReport.summary.sem1Rank)
                           : studentReport.summary.sem2Rank
                           ? getRankDisplay(studentReport.summary.sem2Rank)
                           : '—'}
+                      </td>
+                    </tr>
+                    <tr className="bg-white font-semibold">
+                      <td className="px-6 py-2.5 text-sm text-gray-900">Rmark</td>
+                      <td className="px-4 py-2.5 text-center text-sm">
+                        <span className={studentReport.summary.sem1Rmark === 'Promoted' ? 'text-green-600' : 'text-red-600'}>
+                          {studentReport.summary.sem1Rmark || '—'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-center text-sm">
+                        <span className={studentReport.summary.sem2Rmark === 'Promoted' ? 'text-green-600' : 'text-red-600'}>
+                          {studentReport.summary.sem2Rmark || '—'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-center text-sm">
+                        <span className={studentReport.summary.avgRmark === 'Promoted' ? 'text-green-600' : 'text-red-600'}>
+                          {studentReport.summary.avgRmark || '—'}
+                        </span>
                       </td>
                     </tr>
                   </tbody>

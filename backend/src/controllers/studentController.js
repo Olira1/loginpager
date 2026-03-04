@@ -74,7 +74,7 @@ const listAvailablePeriods = async (req, res) => {
        FROM student_enrollments se
        JOIN academic_years ay ON ay.id = se.academic_year_id
        WHERE se.student_id = ?
-       ORDER BY ay.start_date DESC, ay.id DESC`,
+       ORDER BY ay.id DESC`,
       [student.id]
     );
 
@@ -87,7 +87,7 @@ const listAvailablePeriods = async (req, res) => {
          FROM student_enrollments se
          WHERE se.student_id = ?
        )
-       ORDER BY ay.start_date DESC, s.semester_number ASC, s.id ASC`,
+       ORDER BY ay.id DESC, s.semester_number ASC, s.id ASC`,
       [student.id]
     );
 
@@ -110,9 +110,15 @@ const listAvailablePeriods = async (req, res) => {
 // VIEW SEMESTER REPORT
 // ==========================================
 
+// Helper: compute promotion remark from average
+const getPromotionRemark = (average) => {
+  if (average == null || average === undefined) return 'Pending';
+  return average >= 50 ? 'Promoted' : 'Not Promoted';
+};
+
 /**
  * GET /api/v1/student/reports/semester
- * View semester grade report
+ * View semester grade report - uses published data or computes from marks when not published
  */
 const getSemesterReport = async (req, res) => {
   try {
@@ -128,27 +134,11 @@ const getSemesterReport = async (req, res) => {
     }
 
     const classContext = await resolveStudentClassContext(student, academic_year_id);
-    const [semesterInfo] = await pool.query('SELECT name FROM semesters WHERE id = ?', [semester_id]);
+    const [semesterInfo] = await pool.query('SELECT name, academic_year_id FROM semesters WHERE id = ?', [semester_id]);
     const [yearInfo] = await pool.query('SELECT name FROM academic_years WHERE id = ?', [academic_year_id]);
+    const academicYearForSemester = academic_year_id || semesterInfo[0]?.academic_year_id;
 
-    // Check if results are published
-    const [results] = await pool.query(
-      `SELECT * FROM student_semester_results 
-       WHERE student_id = ? AND semester_id = ? AND is_published = TRUE`,
-      [student.id, semester_id]
-    );
-
-    if (results.length === 0) {
-      return res.status(404).json({
-        success: false,
-        data: null,
-        error: { code: 'NOT_FOUND', message: 'Report not yet published.' }
-      });
-    }
-
-    const result = results[0];
-
-    // Get subject scores (include subject id for detail navigation, only submitted/approved subjects)
+    // Get subject scores first (always from marks - submitted/approved subjects)
     const [subjects] = await pool.query(
       `SELECT s.id as subject_id, s.name,
               SUM(m.score / m.max_score * COALESCE(aw.weight_percent, at.default_weight_percent)) as score
@@ -166,11 +156,87 @@ const getSemesterReport = async (req, res) => {
       [student.id, semester_id, classContext.class_id]
     );
 
-    // Get total students in class
-    const [totalStudents] = await pool.query(
-      'SELECT COUNT(*) as count FROM students WHERE class_id = ?',
-      [classContext.class_id]
+    // Check if results are published in student_semester_results
+    const [results] = await pool.query(
+      `SELECT * FROM student_semester_results 
+       WHERE student_id = ? AND semester_id = ? AND is_published = TRUE`,
+      [student.id, semester_id]
     );
+
+    let summary;
+    let status = 'computed';
+    let published_at = null;
+
+    if (results.length > 0) {
+      const result = results[0];
+      const [totalStudents] = await pool.query(
+        'SELECT COUNT(*) as count FROM students WHERE class_id = ?',
+        [classContext.class_id]
+      );
+      summary = {
+        total: parseFloat(result.total_score) || 0,
+        average: parseFloat(result.average_score) || 0,
+        rank_in_class: result.rank_in_class,
+        total_students: totalStudents[0].count,
+        remark: result.remark
+      };
+      status = 'published';
+      published_at = result.published_at;
+    } else {
+      // Compute from marks when not published
+      const subjectScores = subjects.map(s => Math.round((parseFloat(s.score) || 0) * 100) / 100);
+      const total = subjectScores.reduce((sum, s) => sum + s, 0);
+      const average = subjectScores.length > 0 ? total / subjectScores.length : 0;
+
+      // Get students in class for rank
+      let studentIds = [];
+      if (academicYearForSemester) {
+        const [enrolled] = await pool.query(
+          'SELECT student_id FROM student_enrollments WHERE class_id = ? AND academic_year_id = ?',
+          [classContext.class_id, academicYearForSemester]
+        );
+        studentIds = enrolled.map(e => e.student_id);
+      }
+      if (studentIds.length === 0) {
+        const [inClass] = await pool.query('SELECT id FROM students WHERE class_id = ?', [classContext.class_id]);
+        studentIds = inClass.map(s => s.id);
+      }
+
+      const studentTotals = [];
+      for (const sid of studentIds) {
+        const [scores] = await pool.query(
+          `SELECT SUM(m.score / m.max_score * COALESCE(aw.weight_percent, at.default_weight_percent)) as subject_score
+           FROM marks m
+           JOIN teaching_assignments ta ON m.teaching_assignment_id = ta.id
+           JOIN assessment_types at ON m.assessment_type_id = m.assessment_type_id
+           JOIN grade_submissions gs ON gs.teaching_assignment_id = ta.id AND gs.semester_id = m.semester_id
+           LEFT JOIN assessment_weights aw ON aw.teaching_assignment_id = m.teaching_assignment_id 
+                                           AND aw.assessment_type_id = m.assessment_type_id 
+                                           AND aw.semester_id = m.semester_id
+           WHERE m.student_id = ? AND m.semester_id = ? AND ta.class_id = ? AND gs.status IN ('submitted', 'approved')
+           GROUP BY ta.subject_id`,
+          [sid, semester_id, classContext.class_id]
+        );
+        const tot = scores.reduce((sum, s) => sum + (parseFloat(s.subject_score) || 0), 0);
+        studentTotals.push({ student_id: sid, total: Math.round(tot * 100) / 100 });
+      }
+      studentTotals.sort((a, b) => b.total - a.total);
+      const rankMap = {};
+      studentTotals.forEach((s, idx) => { rankMap[s.student_id] = idx + 1; });
+      const rank = rankMap[student.id] || null;
+
+      const [totalStudents] = await pool.query(
+        'SELECT COUNT(*) as count FROM students WHERE class_id = ?',
+        [classContext.class_id]
+      );
+      summary = {
+        total: Math.round(total * 100) / 100,
+        average: Math.round(average * 100) / 100,
+        rank_in_class: rank,
+        total_students: totalStudents[0].count,
+        remark: getPromotionRemark(average)
+      };
+    }
 
     return res.status(200).json({
       success: true,
@@ -189,15 +255,9 @@ const getSemesterReport = async (req, res) => {
           name: s.name,
           score: Math.round((parseFloat(s.score) || 0) * 100) / 100
         })),
-        summary: {
-          total: parseFloat(result.total_score) || 0,
-          average: parseFloat(result.average_score) || 0,
-          rank_in_class: result.rank_in_class,
-          total_students: totalStudents[0].count,
-          remark: result.remark
-        },
-        status: 'published',
-        published_at: result.published_at
+        summary,
+        status,
+        published_at
       },
       error: null
     });
@@ -339,30 +399,105 @@ const getRank = async (req, res) => {
     const [semesterInfo] = await pool.query('SELECT name FROM semesters WHERE id = ?', [semester_id]);
     const [yearInfo] = await pool.query('SELECT name FROM academic_years WHERE id = ?', [academic_year_id]);
 
-    // Get student's result
+    // Get student's result from student_semester_results
     const [results] = await pool.query(
       `SELECT * FROM student_semester_results WHERE student_id = ? AND semester_id = ?`,
       [student.id, semester_id]
     );
 
-    // Get class statistics
-    const [classStats] = await pool.query(
-      `SELECT 
-         AVG(ssr.average_score) as class_average,
-         MAX(ssr.total_score) as highest_total,
-         MIN(ssr.total_score) as lowest_total,
-         COUNT(*) as total_students
-       FROM student_semester_results ssr
-       JOIN students s ON ssr.student_id = s.id
-       WHERE s.class_id = ? AND ssr.semester_id = ?`,
-      [classContext.class_id, semester_id]
-    );
+    const academicYearForSemester = academic_year_id || (await getAcademicYearFromSemester(semester_id));
 
-    const studentResult = results[0] || {};
-    const stats = classStats[0] || {};
+    let studentAverage, studentTotal, rankPosition, totalStudents, classAverage, highestTotal, lowestTotal;
 
-    const classAverage = parseFloat(stats.class_average) || 0;
-    const studentAverage = parseFloat(studentResult.average_score) || 0;
+    if (results.length > 0) {
+      const r = results[0];
+      studentAverage = parseFloat(r.average_score) || 0;
+      studentTotal = parseFloat(r.total_score) || 0;
+      rankPosition = r.rank_in_class != null ? r.rank_in_class : null;
+    }
+
+    // Get class statistics - from student_semester_results when available
+    let studentIds = [];
+    if (academicYearForSemester) {
+      const [enrolled] = await pool.query(
+        'SELECT student_id FROM student_enrollments WHERE class_id = ? AND academic_year_id = ?',
+        [classContext.class_id, academicYearForSemester]
+      );
+      studentIds = enrolled.map(e => e.student_id);
+    }
+    if (studentIds.length === 0) {
+      const [inClass] = await pool.query('SELECT id FROM students WHERE class_id = ?', [classContext.class_id]);
+      studentIds = inClass.map(s => s.id);
+    }
+
+    // When no student_semester_results or need to compute, get totals from marks
+    const needCompute = results.length === 0 || !rankPosition;
+    if (needCompute) {
+      const studentTotals = [];
+      for (const sid of studentIds) {
+        const [scores] = await pool.query(
+          `SELECT SUM(m.score / m.max_score * COALESCE(aw.weight_percent, at.default_weight_percent)) as subject_score
+           FROM marks m
+           JOIN teaching_assignments ta ON m.teaching_assignment_id = ta.id
+           JOIN assessment_types at ON m.assessment_type_id = m.assessment_type_id
+           JOIN grade_submissions gs ON gs.teaching_assignment_id = ta.id AND gs.semester_id = m.semester_id
+           LEFT JOIN assessment_weights aw ON aw.teaching_assignment_id = m.teaching_assignment_id 
+                                           AND aw.assessment_type_id = m.assessment_type_id 
+                                           AND aw.semester_id = m.semester_id
+           WHERE m.student_id = ? AND m.semester_id = ? AND ta.class_id = ? AND gs.status IN ('submitted', 'approved')
+           GROUP BY ta.subject_id`,
+          [sid, semester_id, classContext.class_id]
+        );
+        const tot = scores.reduce((sum, s) => sum + (parseFloat(s.subject_score) || 0), 0);
+        const subjCount = scores.length;
+        const avg = subjCount > 0 ? tot / subjCount : 0;
+        studentTotals.push({ student_id: sid, total: Math.round(tot * 100) / 100, average: Math.round(avg * 100) / 100 });
+      }
+      studentTotals.sort((a, b) => b.total - a.total);
+      totalStudents = studentTotals.length;
+      studentTotals.forEach((s, idx) => { s.rank = idx + 1; });
+      const me = studentTotals.find(s => s.student_id === student.id);
+      if (me) {
+        studentAverage = me.average;
+        studentTotal = me.total;
+        rankPosition = me.rank;
+      }
+      if (studentTotals.length > 0) {
+        classAverage = studentTotals.reduce((sum, s) => sum + s.average, 0) / studentTotals.length;
+        highestTotal = Math.max(...studentTotals.map(s => s.total));
+        lowestTotal = Math.min(...studentTotals.map(s => s.total));
+      } else {
+        classAverage = 0;
+        highestTotal = 0;
+        lowestTotal = 0;
+      }
+    } else {
+      let classStats;
+      if (academicYearForSemester) {
+        [classStats] = await pool.query(
+          `SELECT AVG(ssr.average_score) as class_average, MAX(ssr.total_score) as highest_total,
+                  MIN(ssr.total_score) as lowest_total, COUNT(*) as total_students
+           FROM student_semester_results ssr
+           JOIN student_enrollments se ON se.student_id = ssr.student_id AND se.academic_year_id = ?
+           WHERE se.class_id = ? AND ssr.semester_id = ?`,
+          [academicYearForSemester, classContext.class_id, semester_id]
+        );
+      } else {
+        [classStats] = await pool.query(
+          `SELECT AVG(ssr.average_score) as class_average, MAX(ssr.total_score) as highest_total,
+                  MIN(ssr.total_score) as lowest_total, COUNT(*) as total_students
+           FROM student_semester_results ssr
+           JOIN students s ON ssr.student_id = s.id
+           WHERE s.class_id = ? AND ssr.semester_id = ?`,
+          [classContext.class_id, semester_id]
+        );
+      }
+      const stats = classStats[0] || {};
+      classAverage = parseFloat(stats.class_average) || 0;
+      highestTotal = parseFloat(stats.highest_total) || 0;
+      lowestTotal = parseFloat(stats.lowest_total) || 0;
+      totalStudents = stats.total_students || 0;
+    }
 
     return res.status(200).json({
       success: true,
@@ -373,21 +508,21 @@ const getRank = async (req, res) => {
         type: type,
         period: `${semesterInfo[0]?.name} ${yearInfo[0]?.name}`,
         rank: {
-          position: studentResult.rank_in_class || null,
-          total_students: stats.total_students || 0
+          position: rankPosition ?? null,
+          total_students: totalStudents ?? 0
         },
         scores: {
-          total: parseFloat(studentResult.total_score) || 0,
-          average: studentAverage
+          total: studentTotal ?? 0,
+          average: studentAverage ?? 0
         },
         comparison: {
-          class_average: Math.round(classAverage * 100) / 100,
-          class_highest_total: parseFloat(stats.highest_total) || 0,
-          class_lowest_total: parseFloat(stats.lowest_total) || 0,
-          above_average: studentAverage > classAverage,
-          difference_from_average: Math.round((studentAverage - classAverage) * 100) / 100
+          class_average: Math.round((classAverage ?? 0) * 100) / 100,
+          class_highest_total: highestTotal ?? 0,
+          class_lowest_total: lowestTotal ?? 0,
+          above_average: (studentAverage ?? 0) > (classAverage ?? 0),
+          difference_from_average: Math.round(((studentAverage ?? 0) - (classAverage ?? 0)) * 100) / 100
         },
-        remark: studentResult.remark || 'Pending'
+        remark: results[0]?.remark || getPromotionRemark(studentAverage)
       },
       error: null
     });

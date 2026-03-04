@@ -16,8 +16,6 @@ const AcademicYearsPage = () => {
   const [success, setSuccess] = useState('');
   const [form, setForm] = useState({
     name: '',
-    start_date: '',
-    end_date: '',
     set_as_current: false
   });
 
@@ -46,7 +44,7 @@ const AcademicYearsPage = () => {
       const res = await createAcademicYear(form);
       if (!res.success) throw new Error(res.error?.message || 'Failed to create academic year.');
       setSuccess('Academic year created successfully.');
-      setForm({ name: '', start_date: '', end_date: '', set_as_current: false });
+      setForm({ name: '', set_as_current: false });
       await loadAcademicYears();
     } catch (err) {
       setError(err.message || 'Failed to create academic year.');
@@ -95,25 +93,11 @@ const AcademicYearsPage = () => {
           <Plus className="w-4 h-4" />
           Create Academic Year
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <input
             value={form.name}
             onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
             placeholder="2018 E.C"
-            className="px-3 py-2 border rounded-lg"
-            required
-          />
-          <input
-            type="date"
-            value={form.start_date}
-            onChange={(e) => setForm((f) => ({ ...f, start_date: e.target.value }))}
-            className="px-3 py-2 border rounded-lg"
-            required
-          />
-          <input
-            type="date"
-            value={form.end_date}
-            onChange={(e) => setForm((f) => ({ ...f, end_date: e.target.value }))}
             className="px-3 py-2 border rounded-lg"
             required
           />
@@ -151,7 +135,7 @@ const AcademicYearsPage = () => {
                     {year.name}
                   </p>
                   <p className="text-xs text-gray-500 mt-1">
-                    {String(year.start_date || '').slice(0, 10)} - {String(year.end_date || '').slice(0, 10)} | Status: {year.lifecycle_status}
+                    Status: {year.lifecycle_status}
                     {year.is_current ? ' | Current' : ''}
                   </p>
                 </div>

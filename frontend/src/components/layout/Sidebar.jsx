@@ -65,10 +65,14 @@ const Sidebar = ({ isOpen, isMobile, onClose }) => {
           <nav className="p-4 space-y-1 flex-1 overflow-y-auto">
             {navItems.map((item) => {
               const Icon = item.icon;
+              // Preserve academic_year_id when navigating between class head / teacher pages
+              const to = location.search && (item.path.startsWith('/class-head') || item.path.startsWith('/teacher'))
+                ? `${item.path}${location.search}`
+                : item.path;
               return (
                 <NavLink
                   key={item.path}
-                  to={item.path}
+                  to={to}
                   end={item.path === `/${user?.role?.replace('_', '-')}`}
                   onClick={() => {
                     if (isMobile) onClose();

@@ -1,20 +1,37 @@
 // Transcripts Page - List generated transcripts and view detailed transcript
-// API: GET /store-house/transcripts, GET /store-house/transcripts/:id
+// API: GET /store-house/transcripts, GET /store-house/transcripts/:id, GET /store-house/periods
 
 import { useState, useEffect } from 'react';
 import {
   FileText, RefreshCw, AlertCircle, ArrowLeft, Eye,
   User, Calendar, GraduationCap, School, CheckCircle
 } from 'lucide-react';
-import { listTranscripts, getTranscript } from '../../services/storeHouseService';
+import { listTranscripts, getTranscript, getAvailablePeriods } from '../../services/storeHouseService';
 
 const TranscriptsPage = () => {
   const [transcripts, setTranscripts] = useState([]);
   const [selectedTranscript, setSelectedTranscript] = useState(null);
   const [transcriptDetail, setTranscriptDetail] = useState(null);
+  const [semesters, setSemesters] = useState([]);
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState('');
+  const [selectedSemesterId, setSelectedSemesterId] = useState('');
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const loadPeriods = async () => {
+      try {
+        const res = await getAvailablePeriods();
+        if (res.success && res.data?.semesters) {
+          setSemesters(res.data.semesters || []);
+        }
+      } catch (err) {
+        console.error('Error loading periods:', err);
+      }
+    };
+    loadPeriods();
+  }, []);
 
   useEffect(() => {
     fetchTranscripts();
@@ -191,17 +208,60 @@ const TranscriptsPage = () => {
     );
   }
 
+  const semestersForYear = semesters.filter((s) => String(s.academic_year_id) === String(selectedAcademicYearId));
+  const yearsFromSemesters = semesters.reduce((acc, s) => {
+    if (!acc.some((y) => String(y.id) === String(s.academic_year_id))) {
+      acc.push({ id: s.academic_year_id, name: s.academic_year_name });
+    }
+    return acc;
+  }, []);
+
   // =============================================
   // LIST VIEW - All transcripts
   // =============================================
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Transcripts</h1>
-        <p className="text-gray-500 mt-1">
-          View and manage generated student transcripts.
-        </p>
+      {/* Header with filters */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Transcripts</h1>
+          <p className="text-gray-500 mt-1">
+            View and manage generated student transcripts.
+          </p>
+        </div>
+        {yearsFromSemesters.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={selectedAcademicYearId}
+              onChange={(e) => {
+                const yearId = e.target.value;
+                setSelectedAcademicYearId(yearId);
+                const first = semesters.find((s) => String(s.academic_year_id) === String(yearId));
+                setSelectedSemesterId(first ? String(first.id) : '');
+              }}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            >
+              <option value="">All Years</option>
+              {yearsFromSemesters.map((y) => (
+                <option key={y.id} value={y.id}>{y.name || `Year ${y.id}`}</option>
+              ))}
+            </select>
+            <select
+              value={selectedSemesterId}
+              onChange={(e) => {
+                const sem = semesters.find((s) => String(s.id) === e.target.value);
+                setSelectedSemesterId(e.target.value);
+                if (sem) setSelectedAcademicYearId(String(sem.academic_year_id));
+              }}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            >
+              <option value="">All Semesters</option>
+              {semestersForYear.map((s) => (
+                <option key={s.id} value={s.id}>{s.name || `Semester ${s.semester_number}`}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {error && (

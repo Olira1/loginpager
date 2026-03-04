@@ -3,6 +3,7 @@
 // Class Head also inherits all Teacher endpoints
 
 const { pool } = require('../config/db');
+const { resolveReadableClassContext } = require('../utils/scopeResolver');
 
 // Helper to get class head's assigned classes (optionally filtered by academic year)
 const getClassHeadClasses = async (userId, academicYearId = null) => {
@@ -26,40 +27,6 @@ const getClassHeadClasses = async (userId, academicYearId = null) => {
 const getClassHeadClass = async (userId, academicYearId = null) => {
   const classes = await getClassHeadClasses(userId, academicYearId);
   return classes.length > 0 ? classes[0] : null;
-};
-
-// Helper to get a class the user teaches in (fallback for read-only views)
-const getTeacherAssignedClass = async (userId, academicYearId = null) => {
-  let query = `SELECT DISTINCT c.id, c.name, c.academic_year_id, g.name as grade_name, g.id as grade_id
-     FROM teaching_assignments ta
-     JOIN classes c ON c.id = ta.class_id
-     JOIN grades g ON g.id = c.grade_id
-     WHERE ta.teacher_id = ?`;
-  const params = [userId];
-
-  if (academicYearId) {
-    query += ' AND ta.academic_year_id = ?';
-    params.push(academicYearId);
-  }
-
-  query += ' ORDER BY c.academic_year_id DESC, c.id ASC';
-  const [classes] = await pool.query(query, params);
-  return classes.length > 0 ? classes[0] : null;
-};
-
-// For read-only class-head pages, allow fallback to teacher assignment in that year.
-const resolveReadableClassContext = async (userId, academicYearId = null) => {
-  const classHeadClass = await getClassHeadClass(userId, academicYearId);
-  if (classHeadClass) {
-    return { classInfo: classHeadClass, scope: 'class_head' };
-  }
-
-  const teacherClass = await getTeacherAssignedClass(userId, academicYearId);
-  if (teacherClass) {
-    return { classInfo: teacherClass, scope: 'teacher' };
-  }
-
-  return { classInfo: null, scope: null };
 };
 
 /**
@@ -832,15 +799,16 @@ const getClassSnapshot = async (req, res) => {
       });
     }
 
-    const [semesterInfo] = await pool.query('SELECT name FROM semesters WHERE id = ?', [semester_id]);
+    const [semesterInfo] = await pool.query('SELECT name, academic_year_id FROM semesters WHERE id = ?', [semester_id]);
+    const semesterYearId = semesterInfo[0]?.academic_year_id || classInfo.academic_year_id;
 
-    // Get all subjects for this class
+    // Get all subjects for this class (filter by academic year for correct marks)
     const [subjectsData] = await pool.query(
       `SELECT DISTINCT s.id, s.name FROM subjects s
        JOIN teaching_assignments ta ON ta.subject_id = s.id
-       WHERE ta.class_id = ?
+       WHERE ta.class_id = ? AND ta.academic_year_id = ?
        ORDER BY s.name`,
-      [classInfo.id]
+      [classInfo.id, semesterYearId]
     );
 
     const subjectNames = subjectsData.map(s => s.name);
@@ -861,17 +829,17 @@ const getClassSnapshot = async (req, res) => {
       let total = 0;
 
       for (const subject of subjectsData) {
-        // Get combined score for this subject
+        // Get combined score for this subject (use ta.academic_year_id to ensure corrected marks from correct year)
         const [scores] = await pool.query(
           `SELECT SUM(m.score / m.max_score * COALESCE(aw.weight_percent, at.default_weight_percent)) as score
            FROM marks m
-           JOIN teaching_assignments ta ON m.teaching_assignment_id = ta.id
+           JOIN teaching_assignments ta ON m.teaching_assignment_id = ta.id AND ta.academic_year_id = ?
            JOIN assessment_types at ON m.assessment_type_id = at.id
            LEFT JOIN assessment_weights aw ON aw.teaching_assignment_id = m.teaching_assignment_id 
                                            AND aw.assessment_type_id = m.assessment_type_id 
                                            AND aw.semester_id = m.semester_id
            WHERE m.student_id = ? AND m.semester_id = ? AND ta.subject_id = ?`,
-          [student.student_id, semester_id, subject.id]
+          [semesterYearId, student.student_id, semester_id, subject.id]
         );
 
         const score = Math.round((parseFloat(scores[0]?.score) || 0) * 100) / 100;
@@ -976,7 +944,15 @@ const publishSemesterResults = async (req, res) => {
 const publishYearResults = async (req, res) => {
   try {
     const { academic_year_id } = req.body;
-    const classInfo = await getClassHeadClass(req.user.id, academic_year_id || null);
+    const yearId = academic_year_id != null ? parseInt(academic_year_id, 10) : NaN;
+    if (!yearId || isNaN(yearId) || yearId < 1) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'academic_year_id is required and must be a valid ID.' }
+      });
+    }
+    const classInfo = await getClassHeadClass(req.user.id, yearId);
     
     if (!classInfo) {
       return res.status(403).json({
@@ -986,12 +962,19 @@ const publishYearResults = async (req, res) => {
       });
     }
 
-    const [yearInfo] = await pool.query('SELECT name FROM academic_years WHERE id = ?', [academic_year_id]);
+    const [yearInfo] = await pool.query('SELECT name FROM academic_years WHERE id = ?', [yearId]);
+    if (!yearInfo || yearInfo.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: { code: 'NOT_FOUND', message: 'Academic year not found.' }
+      });
+    }
 
     // Get semesters for this academic year
     const [semesters] = await pool.query(
-      'SELECT id, name FROM semesters WHERE academic_year_id = ? ORDER BY `order`',
-      [academic_year_id]
+      'SELECT id, name FROM semesters WHERE academic_year_id = ? ORDER BY semester_number ASC, id ASC',
+      [yearId]
     );
 
     const semesterNames = semesters.map(s => s.name);
@@ -1127,13 +1110,17 @@ const sendRosterToStoreHouse = async (req, res) => {
       });
     }
 
-    // Get all subjects
+    // Get semester's academic year for correct teaching assignments
+    const [semRows] = await pool.query('SELECT academic_year_id FROM semesters WHERE id = ?', [semester_id]);
+    const semesterYearId = semRows[0]?.academic_year_id || academic_year_id || classInfo.academic_year_id;
+
+    // Get all subjects for this class (filter by academic year for correct marks)
     const [subjectsData] = await pool.query(
       `SELECT DISTINCT s.id, s.name FROM subjects s
        JOIN teaching_assignments ta ON ta.subject_id = s.id
-       WHERE ta.class_id = ?
+       WHERE ta.class_id = ? AND ta.academic_year_id = ?
        ORDER BY s.name`,
-      [classInfo.id]
+      [classInfo.id, semesterYearId]
     );
 
     // Get all students with their scores
@@ -1156,13 +1143,13 @@ const sendRosterToStoreHouse = async (req, res) => {
         const [scores] = await pool.query(
           `SELECT SUM(m.score / m.max_score * COALESCE(aw.weight_percent, at.default_weight_percent)) as score
            FROM marks m
-           JOIN teaching_assignments ta ON m.teaching_assignment_id = ta.id
+           JOIN teaching_assignments ta ON m.teaching_assignment_id = ta.id AND ta.academic_year_id = ?
            JOIN assessment_types at ON m.assessment_type_id = at.id
            LEFT JOIN assessment_weights aw ON aw.teaching_assignment_id = m.teaching_assignment_id 
                                            AND aw.assessment_type_id = m.assessment_type_id 
                                            AND aw.semester_id = m.semester_id
            WHERE m.student_id = ? AND m.semester_id = ? AND ta.subject_id = ?`,
-          [student.student_id, semester_id, subject.id]
+          [semesterYearId, student.student_id, semester_id, subject.id]
         );
 
         const score = Math.round((parseFloat(scores[0]?.score) || 0) * 100) / 100;

@@ -4,6 +4,7 @@
 // API: GET /teacher/classes, GET /teacher/classes/:id/subjects/:id/grades, POST /teacher/grades/bulk, etc.
 
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   FileText,
   RefreshCw,
@@ -24,6 +25,7 @@ import {
 } from '../../services/classHeadService';
 
 const GradeEntryPage = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   // State: class/subject selection
   const [assignedClasses, setAssignedClasses] = useState([]);
   const [semesters, setSemesters] = useState([]);
@@ -71,9 +73,15 @@ const GradeEntryPage = () => {
         if (response.success) {
           const items = response.data.items || [];
           setSemesters(items);
-          if (items[0]) {
-            setSelectedSemesterId(String(items[0].id));
-            setSelectedAcademicYearId(String(items[0].academic_year_id));
+          if (items.length > 0) {
+            const urlYearId = searchParams.get('academic_year_id');
+            const urlMatch = urlYearId && items.some((s) => String(s.academic_year_id) === String(urlYearId));
+            const firstSemester = urlMatch
+              ? items.find((s) => String(s.academic_year_id) === String(urlYearId)) || items[0]
+              : items[0];
+            setSelectedSemesterId(String(firstSemester.id));
+            setSelectedAcademicYearId(String(firstSemester.academic_year_id));
+            if (!urlYearId) setSearchParams({ academic_year_id: String(firstSemester.academic_year_id) });
           }
         }
       } catch (err) {
@@ -395,7 +403,10 @@ const GradeEntryPage = () => {
                 onChange={(e) => {
                   const sem = semesters.find((s) => String(s.id) === e.target.value);
                   setSelectedSemesterId(e.target.value);
-                  if (sem) setSelectedAcademicYearId(String(sem.academic_year_id));
+                  if (sem) {
+                    setSelectedAcademicYearId(String(sem.academic_year_id));
+                    setSearchParams({ academic_year_id: String(sem.academic_year_id) });
+                  }
                 }}
                 className="w-full appearance-none bg-white border border-gray-300 rounded-lg px-4 py-2.5 pr-10 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
               >

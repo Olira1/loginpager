@@ -1746,7 +1746,7 @@ const listAcademicYears = async (req, res) => {
       `SELECT id, name, start_date, end_date, is_current, lifecycle_status,
               locked_at, locked_by, lock_reason, reopened_at, reopened_by, reopen_reason, created_at
        FROM academic_years
-       ORDER BY start_date DESC, id DESC`
+       ORDER BY id DESC`
     );
 
     return res.status(200).json({
@@ -1771,12 +1771,12 @@ const listAcademicYears = async (req, res) => {
 const createAcademicYear = async (req, res) => {
   let connection;
   try {
-    const { name, start_date, end_date, set_as_current = false } = req.body;
-    if (!name || !start_date || !end_date) {
+    const { name, set_as_current = false } = req.body;
+    if (!name) {
       return res.status(400).json({
         success: false,
         data: null,
-        error: { code: 'VALIDATION_ERROR', message: 'name, start_date, and end_date are required.' }
+        error: { code: 'VALIDATION_ERROR', message: 'name is required.' }
       });
     }
 
@@ -1792,11 +1792,12 @@ const createAcademicYear = async (req, res) => {
     connection = await pool.getConnection();
     await connection.beginTransaction();
 
+    // Admin creates academic year by name only; start/end dates are not set by admin
     const lifecycleStatus = set_as_current ? 'active' : 'planned';
     const [inserted] = await connection.query(
       `INSERT INTO academic_years (name, start_date, end_date, is_current, lifecycle_status)
-       VALUES (?, ?, ?, ?, ?)`,
-      [name, start_date, end_date, !!set_as_current, lifecycleStatus]
+       VALUES (?, NULL, NULL, ?, ?)`,
+      [name, !!set_as_current, lifecycleStatus]
     );
 
     if (set_as_current) {

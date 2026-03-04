@@ -12,6 +12,13 @@ router.use(checkPasswordChanged);
 router.use(checkRole('store_house'));
 
 // ==========================================
+// PERIODS (for year/semester filters)
+// ==========================================
+
+// GET /api/v1/store-house/periods - List available academic years and semesters
+router.get('/periods', storeHouseController.listAvailablePeriods);
+
+// ==========================================
 // ROSTERS
 // ==========================================
 

@@ -1766,6 +1766,7 @@ const commitPromotions = async (req, res) => {
     const {
       from_academic_year_id,
       to_academic_year_id,
+      source_grade_level,
       class_mappings = [],
       default_target_class_id = null,
       promotion_criteria_id = null
@@ -1776,6 +1777,13 @@ const commitPromotions = async (req, res) => {
         success: false,
         data: null,
         error: { code: 'VALIDATION_ERROR', message: 'from_academic_year_id and to_academic_year_id are required.' }
+      });
+    }
+    if (!req.user?.id) {
+      return res.status(401).json({
+        success: false,
+        data: null,
+        error: { code: 'UNAUTHORIZED', message: 'User not authenticated.' }
       });
     }
 
@@ -1798,6 +1806,14 @@ const commitPromotions = async (req, res) => {
       }
     }
 
+    let gradeFilter = '';
+    const queryParams = [schoolId, from_academic_year_id];
+    const gradeLevel = Number(source_grade_level);
+    if (!isNaN(gradeLevel) && gradeLevel > 0) {
+      gradeFilter = ' AND g.level = ?';
+      queryParams.push(gradeLevel);
+    }
+
     const [rows] = await pool.query(
       `SELECT se.id as enrollment_id, se.student_id, se.class_id, g.level as grade_level,
               COALESCE(AVG(ssr.average_score), 0) as year_average
@@ -1807,9 +1823,9 @@ const commitPromotions = async (req, res) => {
        JOIN grades g ON g.id = se.grade_id
        LEFT JOIN semesters sem ON sem.academic_year_id = se.academic_year_id
        LEFT JOIN student_semester_results ssr ON ssr.student_id = se.student_id AND ssr.semester_id = sem.id
-       WHERE g.school_id = ? AND se.academic_year_id = ?
+       WHERE g.school_id = ? AND se.academic_year_id = ? ${gradeFilter}
        GROUP BY se.id, se.student_id, se.class_id, g.level`,
-      [schoolId, from_academic_year_id]
+      queryParams
     );
 
     connection = await pool.getConnection();
@@ -1820,7 +1836,7 @@ const commitPromotions = async (req, res) => {
       `INSERT INTO promotion_batches
        (batch_code, school_id, from_academic_year_id, to_academic_year_id, promotion_criteria_id, status, created_by)
        VALUES (?, ?, ?, ?, ?, 'committed', ?)`,
-      [batchCode, schoolId, from_academic_year_id, to_academic_year_id, promotion_criteria_id, req.user.id]
+      [batchCode, schoolId, from_academic_year_id, to_academic_year_id, promotion_criteria_id || null, req.user.id]
     );
     const batchId = batchInserted.insertId;
 
@@ -1847,7 +1863,23 @@ const commitPromotions = async (req, res) => {
       }
 
       if (decision === 'repeated') {
-        toClassId = classMapping.get(Number(row.class_id)) || Number(row.class_id);
+        toClassId = classMapping.get(Number(row.class_id)) || null;
+        // For repeated: need a class in target year with same grade level (student stays in same grade)
+        if (!toClassId) {
+          const [repeatClassRows] = await connection.query(
+            `SELECT c.id FROM classes c
+             JOIN grades g ON g.id = c.grade_id
+             WHERE c.academic_year_id = ? AND g.level = ? AND g.school_id = ?
+             LIMIT 1`,
+            [to_academic_year_id, row.grade_level, schoolId]
+          );
+          toClassId = repeatClassRows[0]?.id || null;
+        }
+        if (!toClassId) {
+          itemStatus = 'failed';
+          errorMessage = 'No target class found for repeated students in target year.';
+          failed += 1;
+        }
       }
 
       if (itemStatus === 'applied') {
@@ -1879,13 +1911,37 @@ const commitPromotions = async (req, res) => {
             );
           } else {
             toGradeLevel = classRows[0].level;
-            const [newEnrollment] = await connection.query(
-              `INSERT INTO student_enrollments
-               (student_id, academic_year_id, grade_id, class_id, status, entry_reason, is_current, started_at, created_by)
-               VALUES (?, ?, ?, ?, 'active', 'promotion', TRUE, CURDATE(), ?)`,
-              [row.student_id, to_academic_year_id, classRows[0].grade_id, classRows[0].id, req.user.id]
+            const newClassId = classRows[0].id;
+            // Check if student already has enrollment in target year (e.g. from previous run)
+            const [existing] = await connection.query(
+              `SELECT id FROM student_enrollments WHERE student_id = ? AND academic_year_id = ?`,
+              [row.student_id, to_academic_year_id]
             );
-            toEnrollmentId = newEnrollment.insertId;
+            if (existing.length > 0) {
+              toEnrollmentId = existing[0].id;
+              // Update existing enrollment and students table
+              await connection.query(
+                `UPDATE student_enrollments SET grade_id = ?, class_id = ?, status = 'active', is_current = TRUE, entry_reason = 'promotion' WHERE id = ?`,
+                [classRows[0].grade_id, newClassId, existing[0].id]
+              );
+              await connection.query(
+                `UPDATE students SET class_id = ?, academic_year_id = ? WHERE id = ?`,
+                [newClassId, to_academic_year_id, row.student_id]
+              );
+            } else {
+              const [newEnrollment] = await connection.query(
+                `INSERT INTO student_enrollments
+                 (student_id, academic_year_id, grade_id, class_id, status, entry_reason, is_current, started_at, created_by)
+                 VALUES (?, ?, ?, ?, 'active', 'promotion', TRUE, CURDATE(), ?)`,
+                [row.student_id, to_academic_year_id, classRows[0].grade_id, newClassId, req.user.id]
+              );
+              toEnrollmentId = newEnrollment.insertId;
+              // Update students table so they appear when filtering by academic year on Students page
+              await connection.query(
+                `UPDATE students SET class_id = ?, academic_year_id = ? WHERE id = ?`,
+                [newClassId, to_academic_year_id, row.student_id]
+              );
+            }
           }
         }
       }
@@ -1902,14 +1958,14 @@ const commitPromotions = async (req, res) => {
           batchId,
           row.student_id,
           row.enrollment_id,
-          toEnrollmentId,
+          toEnrollmentId ?? null,
           decision,
-          row.grade_level,
-          toGradeLevel,
+          row.grade_level ?? null,
+          toGradeLevel ?? null,
           row.class_id,
-          toClassId,
+          toClassId ?? null,
           itemStatus,
-          errorMessage
+          errorMessage ?? null
         ]
       );
     }
@@ -1939,12 +1995,15 @@ const commitPromotions = async (req, res) => {
       error: null
     });
   } catch (error) {
-    if (connection) await connection.rollback();
+    if (connection) {
+      try { await connection.rollback(); } catch (rbErr) { console.error('Rollback error:', rbErr); }
+    }
     console.error('Commit promotions error:', error);
+    const errMsg = error?.message || String(error);
     return res.status(500).json({
       success: false,
       data: null,
-      error: { code: 'INTERNAL_ERROR', message: 'An error occurred while committing promotions.' }
+      error: { code: 'INTERNAL_ERROR', message: errMsg.includes('Duplicate') ? 'Student already enrolled in target year.' : 'An error occurred while committing promotions.' }
     });
   } finally {
     if (connection) connection.release();

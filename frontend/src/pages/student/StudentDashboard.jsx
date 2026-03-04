@@ -1,6 +1,6 @@
 // Student Dashboard - Academic overview with subject performance cards
 // Shows overall summary and per-subject scores with link to detailed assessment view
-// API: GET /student/profile, GET /student/rank, GET /student/subjects/scores
+// API: GET /student/profile, GET /student/rank, GET /student/subjects/scores, GET /student/periods
 
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -8,7 +8,7 @@ import {
   GraduationCap, Award, TrendingUp, BookOpen, RefreshCw,
   AlertCircle, BarChart3, ArrowRight, ClipboardList
 } from 'lucide-react';
-import { getProfile, getRank } from '../../services/studentService';
+import { getProfile, getRank, getAvailablePeriods } from '../../services/studentService';
 import api from '../../services/api';
 
 const StudentDashboard = () => {
@@ -16,26 +16,53 @@ const StudentDashboard = () => {
   const [profile, setProfile] = useState(null);
   const [rankData, setRankData] = useState(null);
   const [subjectScores, setSubjectScores] = useState([]);
+  const [academicYears, setAcademicYears] = useState([]);
+  const [semesters, setSemesters] = useState([]);
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState('');
+  const [selectedSemesterId, setSelectedSemesterId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Current semester/year IDs
-  const semesterId = 5;
-  const academicYearId = 3;
-
+  // Load available periods on mount
   useEffect(() => {
-    fetchDashboardData();
+    const loadPeriods = async () => {
+      try {
+        const res = await getAvailablePeriods();
+        if (res.success && res.data) {
+          const years = res.data.academic_years || [];
+          const sems = res.data.semesters || [];
+          setAcademicYears(years);
+          setSemesters(sems);
+          if (sems.length > 0) {
+            setSelectedSemesterId(String(sems[0].id));
+            setSelectedAcademicYearId(String(sems[0].academic_year_id));
+          }
+        }
+      } catch (err) {
+        console.error('Error loading periods:', err);
+      }
+    };
+    loadPeriods();
   }, []);
 
+  useEffect(() => {
+    if (selectedSemesterId && selectedAcademicYearId) {
+      fetchDashboardData();
+    } else if (academicYears.length === 0 && semesters.length === 0) {
+      // No periods - try fetching profile only
+      getProfile().then((r) => r?.success && setProfile(r.data)).finally(() => setLoading(false));
+    }
+  }, [selectedSemesterId, selectedAcademicYearId]);
+
   const fetchDashboardData = async () => {
+    if (!selectedSemesterId || !selectedAcademicYearId) return;
     setLoading(true);
     setError(null);
     try {
-      // Fetch profile, rank, and subject scores in parallel
       const [profileRes, rankRes, subjectsRes] = await Promise.all([
         getProfile().catch(() => null),
-        getRank({ semester_id: semesterId, academic_year_id: academicYearId, type: 'semester' }).catch(() => null),
-        api.get('/student/subjects/scores', { params: { semester_id: semesterId } }).catch(() => null),
+        getRank({ semester_id: selectedSemesterId, academic_year_id: selectedAcademicYearId, type: 'semester' }).catch(() => null),
+        api.get('/student/subjects/scores', { params: { semester_id: selectedSemesterId } }).catch(() => null),
       ]);
 
       if (profileRes?.success) setProfile(profileRes.data);
@@ -51,7 +78,15 @@ const StudentDashboard = () => {
     }
   };
 
-  if (loading) {
+  const semestersForYear = semesters.filter((s) => String(s.academic_year_id) === String(selectedAcademicYearId));
+  const yearsFromSemesters = semesters.reduce((acc, s) => {
+    if (!acc.some((y) => String(y.id) === String(s.academic_year_id))) {
+      acc.push({ id: s.academic_year_id, name: s.academic_year_name });
+    }
+    return acc;
+  }, []);
+
+  if (loading && !profile) {
     return (
       <div className="flex items-center justify-center h-64">
         <RefreshCw className="w-8 h-8 text-indigo-500 animate-spin" />
@@ -65,12 +100,47 @@ const StudentDashboard = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">My Dashboard</h1>
-        <p className="text-gray-500 mt-1">
-          Welcome back, {profile?.name || 'Student'}! Here's your academic overview.
-        </p>
+      {/* Header with filters */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">My Dashboard</h1>
+          <p className="text-gray-500 mt-1">
+            Welcome back, {profile?.name || 'Student'}! Here's your academic overview.
+          </p>
+        </div>
+        {yearsFromSemesters.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={selectedAcademicYearId}
+              onChange={(e) => {
+                const yearId = e.target.value;
+                setSelectedAcademicYearId(yearId);
+                const first = semesters.find((s) => String(s.academic_year_id) === String(yearId));
+                if (first) setSelectedSemesterId(String(first.id));
+              }}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            >
+              {yearsFromSemesters.map((y) => (
+                <option key={y.id} value={y.id}>{y.name || `Year ${y.id}`}</option>
+              ))}
+            </select>
+            <select
+              value={selectedSemesterId}
+              onChange={(e) => {
+                const sem = semesters.find((s) => String(s.id) === e.target.value);
+                setSelectedSemesterId(e.target.value);
+                if (sem) setSelectedAcademicYearId(String(sem.academic_year_id));
+              }}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            >
+              {semestersForYear.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {(s.academic_year_name || '')} - {s.name || `Semester ${s.semester_number}`}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -80,10 +150,12 @@ const StudentDashboard = () => {
         </div>
       )}
 
-      {/* Academic Summary Card */}
+      {/* Academic Summary Card - filtered by selected year/semester */}
       <div className="bg-white border border-gray-200 rounded-xl p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-1">Academic Summary</h2>
-        <p className="text-sm text-gray-500 mb-4">Performance for current semester</p>
+        <p className="text-sm text-gray-500 mb-4">
+          Performance for {semestersForYear.find((s) => String(s.id) === selectedSemesterId)?.name || 'selected semester'}
+        </p>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div className="bg-indigo-50 rounded-lg p-4 text-center">
@@ -106,7 +178,7 @@ const StudentDashboard = () => {
           <div className="bg-amber-50 rounded-lg p-4 text-center">
             <TrendingUp className="w-6 h-6 text-amber-600 mx-auto mb-2" />
             <p className="text-xs text-gray-500">vs Class Avg</p>
-            <p className={`text-lg font-bold ${rankData?.comparison?.above_average ? 'text-green-700' : 'text-red-600'}`}>
+            <p className={`text-lg font-bold ${rankData?.comparison?.above_average ? 'text-green-700' : rankData?.comparison?.difference_from_average != null ? 'text-red-600' : 'text-gray-500'}`}>
               {rankData?.comparison?.difference_from_average != null
                 ? `${rankData.comparison.difference_from_average > 0 ? '+' : ''}${rankData.comparison.difference_from_average.toFixed(1)}`
                 : '—'}
@@ -123,7 +195,7 @@ const StudentDashboard = () => {
             <ClipboardList className="w-4 h-4" /> View Assessment Marks <ArrowRight className="w-4 h-4" />
           </button>
           <button
-            onClick={() => navigate('/student/semester-report')}
+            onClick={() => navigate(`/student/semester-report?academic_year_id=${selectedAcademicYearId}`)}
             className="text-sm text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1"
           >
             View Semester Report <ArrowRight className="w-4 h-4" />

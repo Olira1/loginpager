@@ -1,51 +1,80 @@
 // Semester Report Page - Formal report card matching school transcript design
-// API: GET /student/reports/semester, GET /student/remarks
+// API: GET /student/reports/semester, GET /student/remarks, GET /student/periods
 
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   FileText, RefreshCw, AlertCircle, MessageSquare
 } from 'lucide-react';
 import api from '../../services/api';
-import { getSemesterReport, getRemarks } from '../../services/studentService';
+import { getSemesterReport, getRemarks, getAvailablePeriods } from '../../services/studentService';
 
 const SemesterReportPage = () => {
+  const [searchParams] = useSearchParams();
   const [sem1Report, setSem1Report] = useState(null);
   const [sem2Report, setSem2Report] = useState(null);
   const [remarks, setRemarks] = useState(null);
+  const [semesters, setSemesters] = useState([]);
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Semester IDs matching seed data
-  const sem1Id = 5;
-  const sem2Id = 6;
-  const academicYearId = 3;
+  // Load available periods on mount
+  useEffect(() => {
+    const loadPeriods = async () => {
+      try {
+        const res = await getAvailablePeriods();
+        if (res.success && res.data?.semesters) {
+          const sems = res.data.semesters || [];
+          setSemesters(sems);
+          const urlYearId = searchParams.get('academic_year_id');
+          const urlMatch = urlYearId && sems.some((s) => String(s.academic_year_id) === String(urlYearId));
+          const yearId = urlMatch ? urlYearId : (sems[0]?.academic_year_id ? String(sems[0].academic_year_id) : '');
+          setSelectedAcademicYearId(yearId);
+        }
+      } catch (err) {
+        console.error('Error loading periods:', err);
+      }
+    };
+    loadPeriods();
+  }, [searchParams]);
 
   useEffect(() => {
-    fetchReports();
-  }, []);
+    if (selectedAcademicYearId && semesters.length > 0) {
+      fetchReports();
+    } else if (semesters.length === 0) {
+      setLoading(false);
+    }
+  }, [selectedAcademicYearId]);
+
+  const semestersForYear = semesters.filter((s) => String(s.academic_year_id) === String(selectedAcademicYearId));
+  const sem1 = semestersForYear.find((s) => s.semester_number === 1 || (s.name || '').toLowerCase().includes('first'));
+  const sem2 = semestersForYear.find((s) => s.semester_number === 2 || (s.name || '').toLowerCase().includes('second'));
+  const sem1Id = sem1?.id;
+  const sem2Id = sem2?.id;
 
   const fetchReports = async () => {
+    if (!selectedAcademicYearId) return;
     setLoading(true);
     setError(null);
     try {
-      // Fetch both semester reports + remarks in parallel
       const [sem1Res, sem2Res, remarksRes] = await Promise.all([
-        getSemesterReport({ semester_id: sem1Id, academic_year_id: academicYearId }).catch(() => null),
-        getSemesterReport({ semester_id: sem2Id, academic_year_id: academicYearId }).catch(() => null),
-        getRemarks({ semester_id: sem1Id, academic_year_id: academicYearId }).catch(() => null),
+        sem1Id ? getSemesterReport({ semester_id: sem1Id, academic_year_id: selectedAcademicYearId }).catch(() => null) : null,
+        sem2Id ? getSemesterReport({ semester_id: sem2Id, academic_year_id: selectedAcademicYearId }).catch(() => null) : null,
+        sem1Id ? getRemarks({ semester_id: sem1Id, academic_year_id: selectedAcademicYearId }).catch(() => null) : null,
       ]);
 
       if (sem1Res?.success) setSem1Report(sem1Res.data);
+      else setSem1Report(null);
       if (sem2Res?.success) setSem2Report(sem2Res.data);
+      else setSem2Report(null);
       if (remarksRes?.success) setRemarks(remarksRes.data);
+      else setRemarks(null);
 
-      // If neither semester has data, show a message
       if (!sem1Res?.success && !sem2Res?.success) {
-        // Fallback: try fetching subject scores directly (works even without published report)
         try {
-          const scoresRes = await api.get('/student/subjects/scores', { params: { semester_id: sem1Id } });
+          const scoresRes = await api.get('/student/subjects/scores', { params: { semester_id: sem1Id || sem2Id } });
           if (scoresRes.data?.success && scoresRes.data.data?.items?.length > 0) {
-            // Build a pseudo-report from live scores
             setSem1Report({
               student: null,
               subjects: scoresRes.data.data.items.map(s => ({ name: s.name, score: s.score })),
@@ -101,12 +130,32 @@ const SemesterReportPage = () => {
   const sem1Summary = sem1Report?.summary;
   const sem2Summary = sem2Report?.summary;
 
+  const yearsFromSemesters = semesters.reduce((acc, s) => {
+    if (!acc.some((y) => String(y.id) === String(s.academic_year_id))) {
+      acc.push({ id: s.academic_year_id, name: s.academic_year_name });
+    }
+    return acc;
+  }, []);
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Student Semester Report</h1>
-        <p className="text-gray-500 mt-1">Your official semester report card.</p>
+      {/* Header with year filter */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Student Semester Report</h1>
+          <p className="text-gray-500 mt-1">Your official semester report card.</p>
+        </div>
+        {yearsFromSemesters.length > 0 && (
+          <select
+            value={selectedAcademicYearId}
+            onChange={(e) => setSelectedAcademicYearId(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-full sm:w-auto"
+          >
+            {yearsFromSemesters.map((y) => (
+              <option key={y.id} value={y.id}>{y.name || `Year ${y.id}`}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {error && !report && (
@@ -221,28 +270,42 @@ const SemesterReportPage = () => {
                     <td className="py-2.5 px-4 text-center text-gray-800 border-b border-red-100"></td>
                   </tr>
                   <tr className="bg-white">
-                    <td className="py-2.5 px-4 text-gray-900 font-semibold">Rank</td>
-                    <td className="py-2.5 px-4 text-center font-bold text-gray-900">
-                      {sem1Summary?.rank_in_class
+                    <td className="py-2.5 px-4 text-gray-900 font-semibold border-b border-red-100">Rank</td>
+                    <td className="py-2.5 px-4 text-center font-bold text-gray-900 border-b border-red-100">
+                      {sem1Summary?.rank_in_class != null
                         ? `${sem1Summary.rank_in_class}${getOrdinal(sem1Summary.rank_in_class)}`
                         : ''}
                     </td>
-                    <td className="py-2.5 px-4 text-center font-bold text-gray-900">
-                      {sem2Summary?.rank_in_class
+                    <td className="py-2.5 px-4 text-center font-bold text-gray-900 border-b border-red-100">
+                      {sem2Summary?.rank_in_class != null
                         ? `${sem2Summary.rank_in_class}${getOrdinal(sem2Summary.rank_in_class)}`
                         : ''}
                     </td>
-                    <td className="py-2.5 px-4 text-center font-bold text-gray-900">
-                      {sem1Summary?.rank_in_class && sem2Summary?.rank_in_class
+                    <td className="py-2.5 px-4 text-center font-bold text-gray-900 border-b border-red-100">
+                      {sem1Summary?.rank_in_class != null && sem2Summary?.rank_in_class != null
                         ? (() => {
                             const avgRank = Math.round((sem1Summary.rank_in_class + sem2Summary.rank_in_class) / 2);
                             return `${avgRank}${getOrdinal(avgRank)}`;
                           })()
-                        : sem1Summary?.rank_in_class
+                        : sem1Summary?.rank_in_class != null
                         ? `${sem1Summary.rank_in_class}${getOrdinal(sem1Summary.rank_in_class)}`
-                        : sem2Summary?.rank_in_class
+                        : sem2Summary?.rank_in_class != null
                         ? `${sem2Summary.rank_in_class}${getOrdinal(sem2Summary.rank_in_class)}`
                         : ''}
+                    </td>
+                  </tr>
+                  <tr className="bg-red-100 font-bold">
+                    <td className="py-2.5 px-4 text-gray-900">Rmark</td>
+                    <td className="py-2.5 px-4 text-center text-gray-900">
+                      {sem1Summary?.remark || ''}
+                    </td>
+                    <td className="py-2.5 px-4 text-center text-gray-900">
+                      {sem2Summary?.remark || ''}
+                    </td>
+                    <td className="py-2.5 px-4 text-center text-gray-900">
+                      {sem1Summary?.remark && sem2Summary?.remark
+                        ? (sem1Summary.remark === sem2Summary.remark ? sem1Summary.remark : `${sem1Summary.remark} / ${sem2Summary.remark}`)
+                        : sem1Summary?.remark || sem2Summary?.remark || ''}
                     </td>
                   </tr>
                 </tbody>

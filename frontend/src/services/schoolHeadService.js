@@ -551,6 +551,54 @@ export const deleteTeachingAssignment = async (assignmentId) => {
   return response.data;
 };
 
+// ============ PROMOTION CRITERIA ============
+
+/**
+ * Get list of promotion criteria for the school
+ * @param {Object} params - Query parameters (page, limit)
+ */
+export const getPromotionCriteria = async (params = {}) => {
+  const response = await api.get('/school/promotion-criteria', { params });
+  return response.data;
+};
+
+/**
+ * Get single promotion criteria details
+ * @param {number} criteriaId - Criteria ID
+ */
+export const getPromotionCriteriaById = async (criteriaId) => {
+  const response = await api.get(`/school/promotion-criteria/${criteriaId}`);
+  return response.data;
+};
+
+/**
+ * Create new promotion criteria
+ * @param {Object} data - Criteria data
+ */
+export const createPromotionCriteria = async (data) => {
+  const response = await api.post('/school/promotion-criteria', data);
+  return response.data;
+};
+
+/**
+ * Update promotion criteria
+ * @param {number} criteriaId - Criteria ID
+ * @param {Object} data - Updated criteria data
+ */
+export const updatePromotionCriteria = async (criteriaId, data) => {
+  const response = await api.put(`/school/promotion-criteria/${criteriaId}`, data);
+  return response.data;
+};
+
+/**
+ * Delete promotion criteria
+ * @param {number} criteriaId - Criteria ID
+ */
+export const deletePromotionCriteria = async (criteriaId) => {
+  const response = await api.delete(`/school/promotion-criteria/${criteriaId}`);
+  return response.data;
+};
+
 // ============ REPORTS ============
 
 /**
@@ -628,6 +676,12 @@ export default {
   createTeachingAssignment,
   updateTeachingAssignment,
   deleteTeachingAssignment,
+  // Promotion Criteria
+  getPromotionCriteria,
+  getPromotionCriteriaById,
+  createPromotionCriteria,
+  updatePromotionCriteria,
+  deletePromotionCriteria,
   // Reports
   getClassAverages,
 };

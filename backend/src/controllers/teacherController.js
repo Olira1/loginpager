@@ -3,6 +3,7 @@
 // All operations are scoped to the teacher's assignments
 
 const { pool } = require('../config/db');
+const { resolveReadableClassContext } = require('../utils/scopeResolver');
 
 // Helper to get current semester
 const getCurrentSemester = async () => {
@@ -58,7 +59,8 @@ const assertSemesterEditable = async (semesterId) => {
 /**
  * GET /api/v1/teacher/scope?academic_year_id=X
  * Returns scope for the selected year: class_head | teacher | null
- * Used by frontend to switch portal (Teacher vs Class Head) based on year.
+ * Uses same logic as class-head/scope: when user has BOTH class_head (e.g. 9A)
+ * and teacher (e.g. 10A) for different classes, returns 'teacher'.
  */
 const getScope = async (req, res) => {
   try {
@@ -71,53 +73,15 @@ const getScope = async (req, res) => {
       });
     }
 
-    const userId = req.user.id;
-    const yearId = parseInt(academic_year_id, 10);
-
-    // Check class head first
-    const [classHeadClasses] = await pool.query(
-      `SELECT c.id, c.name, g.name as grade_name
-       FROM classes c
-       JOIN grades g ON c.grade_id = g.id
-       WHERE c.class_head_id = ? AND c.academic_year_id = ?`,
-      [userId, yearId]
-    );
-
-    if (classHeadClasses.length > 0) {
-      return res.status(200).json({
-        success: true,
-        data: {
-          scope: 'class_head',
-          class_info: { id: classHeadClasses[0].id, name: classHeadClasses[0].name, grade_name: classHeadClasses[0].grade_name }
-        },
-        error: null
-      });
-    }
-
-    // Fallback: teacher assignment
-    const [teacherClasses] = await pool.query(
-      `SELECT DISTINCT c.id, c.name, g.name as grade_name
-       FROM teaching_assignments ta
-       JOIN classes c ON c.id = ta.class_id
-       JOIN grades g ON g.id = c.grade_id
-       WHERE ta.teacher_id = ? AND ta.academic_year_id = ?`,
-      [userId, yearId]
-    );
-
-    if (teacherClasses.length > 0) {
-      return res.status(200).json({
-        success: true,
-        data: {
-          scope: 'teacher',
-          class_info: { id: teacherClasses[0].id, name: teacherClasses[0].name, grade_name: teacherClasses[0].grade_name }
-        },
-        error: null
-      });
-    }
-
+    const result = await resolveReadableClassContext(req.user.id, parseInt(academic_year_id, 10));
     return res.status(200).json({
       success: true,
-      data: { scope: null, class_info: null },
+      data: {
+        scope: result.scope,
+        class_info: result.classInfo
+          ? { id: result.classInfo.id, name: result.classInfo.name, grade_name: result.classInfo.grade_name }
+          : null
+      },
       error: null
     });
   } catch (error) {

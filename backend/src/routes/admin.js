@@ -75,45 +75,6 @@ router.post('/school-heads/:user_id/reset-password', adminController.resetSchool
 router.post('/school-heads/reset-password/:user_id', adminController.resetSchoolHeadPassword);
 
 // ==========================================
-// PROMOTION CRITERIA
-// ==========================================
-
-/**
- * @route   GET /api/v1/admin/promotion-criteria
- * @desc    List all promotion criteria
- * @access  Admin only
- */
-router.get('/promotion-criteria', adminController.listPromotionCriteria);
-
-/**
- * @route   GET /api/v1/admin/promotion-criteria/:criteria_id
- * @desc    Get promotion criteria details
- * @access  Admin only
- */
-router.get('/promotion-criteria/:criteria_id', adminController.getPromotionCriteria);
-
-/**
- * @route   POST /api/v1/admin/promotion-criteria
- * @desc    Create promotion criteria
- * @access  Admin only
- */
-router.post('/promotion-criteria', adminController.createPromotionCriteria);
-
-/**
- * @route   PUT /api/v1/admin/promotion-criteria/:criteria_id
- * @desc    Update promotion criteria
- * @access  Admin only
- */
-router.put('/promotion-criteria/:criteria_id', adminController.updatePromotionCriteria);
-
-/**
- * @route   DELETE /api/v1/admin/promotion-criteria/:criteria_id
- * @desc    Delete promotion criteria
- * @access  Admin only
- */
-router.delete('/promotion-criteria/:criteria_id', adminController.deletePromotionCriteria);
-
-// ==========================================
 // ACADEMIC YEAR LIFECYCLE
 // ==========================================
 router.get('/academic-years', adminController.listAcademicYears);

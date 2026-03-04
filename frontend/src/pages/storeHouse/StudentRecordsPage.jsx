@@ -1,17 +1,35 @@
 // Student Records Page - Search students, view cumulative records, generate transcripts
 // API: GET /store-house/students/search, GET /store-house/students/:id/cumulative-record,
-//      POST /store-house/students/:id/transcript
+//      POST /store-house/students/:id/transcript, GET /store-house/periods
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Search, Users, RefreshCw, AlertCircle, ArrowLeft, User,
   GraduationCap, Calendar, FileText, CheckCircle, BookOpen
 } from 'lucide-react';
 import {
-  searchStudents, getCumulativeRecord, generateTranscript
+  searchStudents, getCumulativeRecord, generateTranscript, getAvailablePeriods
 } from '../../services/storeHouseService';
 
 const StudentRecordsPage = () => {
+  const [semesters, setSemesters] = useState([]);
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState('');
+  const [selectedSemesterId, setSelectedSemesterId] = useState('');
+
+  useEffect(() => {
+    const loadPeriods = async () => {
+      try {
+        const res = await getAvailablePeriods();
+        if (res.success && res.data?.semesters) {
+          setSemesters(res.data.semesters || []);
+        }
+      } catch (err) {
+        console.error('Error loading periods:', err);
+      }
+    };
+    loadPeriods();
+  }, []);
+
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
   const [searchCode, setSearchCode] = useState('');
@@ -119,7 +137,11 @@ const StudentRecordsPage = () => {
     }
 
     const student = cumulativeRecord?.student;
-    const history = cumulativeRecord?.academic_history || [];
+    const allHistory = cumulativeRecord?.academic_history || [];
+    const selectedYearName = semesters.find((s) => String(s.academic_year_id) === String(selectedAcademicYearId))?.academic_year_name;
+    const history = selectedAcademicYearId && selectedYearName
+      ? allHistory.filter((h) => String(h.academic_year) === String(selectedYearName))
+      : allHistory;
 
     return (
       <div className="space-y-6">
@@ -293,17 +315,60 @@ const StudentRecordsPage = () => {
     );
   }
 
+  const semestersForYear = semesters.filter((s) => String(s.academic_year_id) === String(selectedAcademicYearId));
+  const yearsFromSemesters = semesters.reduce((acc, s) => {
+    if (!acc.some((y) => String(y.id) === String(s.academic_year_id))) {
+      acc.push({ id: s.academic_year_id, name: s.academic_year_name });
+    }
+    return acc;
+  }, []);
+
   // =============================================
   // SEARCH VIEW
   // =============================================
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Student Records</h1>
-        <p className="text-gray-500 mt-1">
-          Search students and view their cumulative academic records.
-        </p>
+      {/* Header with filters */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Student Records</h1>
+          <p className="text-gray-500 mt-1">
+            Search students and view their cumulative academic records.
+          </p>
+        </div>
+        {yearsFromSemesters.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={selectedAcademicYearId}
+              onChange={(e) => {
+                const yearId = e.target.value;
+                setSelectedAcademicYearId(yearId);
+                const first = semesters.find((s) => String(s.academic_year_id) === String(yearId));
+                setSelectedSemesterId(first ? String(first.id) : '');
+              }}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            >
+              <option value="">All Years</option>
+              {yearsFromSemesters.map((y) => (
+                <option key={y.id} value={y.id}>{y.name || `Year ${y.id}`}</option>
+              ))}
+            </select>
+            <select
+              value={selectedSemesterId}
+              onChange={(e) => {
+                const sem = semesters.find((s) => String(s.id) === e.target.value);
+                setSelectedSemesterId(e.target.value);
+                if (sem) setSelectedAcademicYearId(String(sem.academic_year_id));
+              }}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            >
+              <option value="">All Semesters</option>
+              {semestersForYear.map((s) => (
+                <option key={s.id} value={s.id}>{s.name || `Semester ${s.semester_number}`}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {error && (

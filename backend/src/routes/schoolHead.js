@@ -114,6 +114,15 @@ router.post('/registrars/:user_id/reset-password', schoolHeadController.resetReg
 router.post('/registrars/reset-password/:user_id', schoolHeadController.resetRegistrarPassword);
 
 // ==========================================
+// PROMOTION CRITERIA
+// ==========================================
+router.get('/promotion-criteria', schoolHeadController.listPromotionCriteria);
+router.get('/promotion-criteria/:criteria_id', schoolHeadController.getPromotionCriteria);
+router.post('/promotion-criteria', schoolHeadController.createPromotionCriteria);
+router.put('/promotion-criteria/:criteria_id', schoolHeadController.updatePromotionCriteria);
+router.delete('/promotion-criteria/:criteria_id', schoolHeadController.deletePromotionCriteria);
+
+// ==========================================
 // STORE HOUSE USER MANAGEMENT
 // ==========================================
 router.post('/store-house-users', schoolHeadController.createStoreHouseUser);

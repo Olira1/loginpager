@@ -304,6 +304,10 @@ const GradeEntryPage = () => {
 
   // Submit grades for approval
   const handleSubmit = async () => {
+    if (Object.keys(editedScores).length > 0) {
+      setError('Please save your changes first by clicking "Save Draft" before submitting marks.');
+      return;
+    }
     if (!hasAnyGrades()) {
       setError('Cannot submit: no grades have been entered yet. Please enter marks first.');
       return;
@@ -551,8 +555,9 @@ const GradeEntryPage = () => {
                 </button>
                 <button
                   onClick={handleSubmit}
-                  disabled={submitting}
-                  className="flex items-center gap-2 px-6 py-2.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+                  disabled={submitting || Object.keys(editedScores).length > 0}
+                  title={Object.keys(editedScores).length > 0 ? 'Save draft first before submitting' : ''}
+                  className="flex items-center gap-2 px-6 py-2.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {submitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                   Submit Marks

@@ -4,10 +4,20 @@
 import api from './api';
 
 // ============================================================
+// PERIODS (for year/semester filters)
+// ============================================================
+
+/** GET /store-house/periods - List available academic years and semesters */
+export const getAvailablePeriods = async () => {
+  const response = await api.get('/store-house/periods');
+  return response.data;
+};
+
+// ============================================================
 // ROSTERS
 // ============================================================
 
-/** GET /store-house/rosters - List all rosters received */
+/** GET /store-house/rosters - List all rosters received (params: academic_year_id, semester_id, grade_id, class_id) */
 export const listRosters = async (params = {}) => {
   const response = await api.get('/store-house/rosters', { params });
   return response.data;
@@ -62,6 +72,7 @@ export const generateTranscript = async (studentId, { purpose }) => {
 // ============================================================
 
 export default {
+  getAvailablePeriods,
   listRosters,
   getRoster,
   searchStudents,

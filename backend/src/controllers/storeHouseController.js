@@ -4,6 +4,61 @@
 const { pool } = require('../config/db');
 
 // ==========================================
+// AVAILABLE PERIODS (years & semesters for filters)
+// ==========================================
+
+/**
+ * GET /api/v1/store-house/periods
+ * List academic years and semesters available for the school (for filter dropdowns)
+ */
+const listAvailablePeriods = async (req, res) => {
+  try {
+    const schoolId = req.user.school_id;
+
+    const [years] = await pool.query(
+      `SELECT DISTINCT ay.id, ay.name, ay.start_date, ay.end_date
+       FROM classes c
+       JOIN grades g ON c.grade_id = g.id
+       JOIN academic_years ay ON c.academic_year_id = ay.id
+       WHERE g.school_id = ? AND c.academic_year_id IS NOT NULL
+       ORDER BY ay.start_date DESC, ay.id DESC`,
+      [schoolId]
+    );
+
+    const yearIds = years.map((y) => y.id);
+    if (yearIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: { academic_years: [], semesters: [] },
+        error: null
+      });
+    }
+
+    const [semesters] = await pool.query(
+      `SELECT s.id, s.name, s.semester_number, s.academic_year_id, ay.name as academic_year_name
+       FROM semesters s
+       JOIN academic_years ay ON s.academic_year_id = ay.id
+       WHERE s.academic_year_id IN (?)
+       ORDER BY ay.start_date DESC, s.semester_number ASC, s.id ASC`,
+      [yearIds]
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: { academic_years: years, semesters },
+      error: null
+    });
+  } catch (error) {
+    console.error('List store house periods error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch periods.' }
+    });
+  }
+};
+
+// ==========================================
 // ROSTERS
 // ==========================================
 
@@ -14,7 +69,7 @@ const { pool } = require('../config/db');
 const listRosters = async (req, res) => {
   try {
     const schoolId = req.user.school_id;
-    const { academic_year_id, grade_id, class_id } = req.query;
+    const { academic_year_id, semester_id, grade_id, class_id } = req.query;
 
     let query = `
       SELECT r.id as roster_id, r.class_id, c.name as class_name, g.name as grade_name,
@@ -34,6 +89,10 @@ const listRosters = async (req, res) => {
     if (academic_year_id) {
       query += ' AND sem.academic_year_id = ?';
       params.push(academic_year_id);
+    }
+    if (semester_id) {
+      query += ' AND r.semester_id = ?';
+      params.push(semester_id);
     }
     if (grade_id) {
       query += ' AND g.id = ?';
@@ -558,6 +617,7 @@ const getTranscript = async (req, res) => {
 };
 
 module.exports = {
+  listAvailablePeriods,
   listRosters,
   getRoster,
   searchStudents,

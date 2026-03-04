@@ -14,7 +14,6 @@ import {
   AdminDashboard, 
   SchoolsPage, 
   SchoolHeadsPage,
-  PromotionCriteriaPage, 
   StatisticsPage,
   AcademicYearsPage
 } from './pages/admin';
@@ -29,6 +28,7 @@ import {
   TeacherAssignmentsPage,
   RegistrarsPage,
   StoreHouseUsersPage,
+  PromotionCriteriaPage as SchoolPromotionCriteriaPage,
   LifecyclePage as SchoolLifecyclePage
 } from './pages/schoolHead';
 
@@ -121,7 +121,6 @@ function App() {
             <Route path="schools" element={<SchoolsPage />} />
             <Route path="schools/:id" element={<SchoolsPage />} />
             <Route path="school-heads" element={<SchoolHeadsPage />} />
-            <Route path="promotion-criteria" element={<PromotionCriteriaPage />} />
             <Route path="academic-years" element={<AcademicYearsPage />} />
             <Route path="statistics" element={<StatisticsPage />} />
             <Route path="profile" element={<Dashboard />} />
@@ -145,6 +144,7 @@ function App() {
             <Route path="assignments" element={<TeacherAssignmentsPage />} />
             <Route path="registrars" element={<RegistrarsPage />} />
             <Route path="store-house-users" element={<StoreHouseUsersPage />} />
+            <Route path="promotion-criteria" element={<SchoolPromotionCriteriaPage />} />
             <Route path="lifecycle" element={<SchoolLifecyclePage />} />
             <Route path="profile" element={<Dashboard />} />
           </Route>

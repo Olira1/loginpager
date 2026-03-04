@@ -150,8 +150,10 @@ const SendRosterPage = () => {
         const avgTotal = countSem > 0 ? Math.round(((sem1Total + sem2Total) / countSem) * 10) / 10 : 0;
         const avgAvg = countSem > 0 ? Math.round(((sem1Avg + sem2Avg) / countSem) * 10) / 10 : 0;
 
-        const remark = rank1Item?.remark || rank2Item?.remark || (avgAvg >= 50 ? 'Promoted' : 'Not Promoted');
-        if (remark === 'Promoted') totalPromoted++;
+        const sem1Remark = rank1Item?.remark || (sem1Avg >= 50 ? 'Promoted' : 'Not Promoted');
+        const sem2Remark = rank2Item?.remark || (sem2Avg >= 50 ? 'Promoted' : 'Not Promoted');
+        const avgRemark = avgAvg >= 50 ? 'Promoted' : 'Not Promoted';
+        if (avgRemark === 'Promoted') totalPromoted++;
         else totalRetained++;
 
         sumAverage += avgAvg;
@@ -161,11 +163,11 @@ const SendRosterPage = () => {
           name: info.name,
           sex: sex === 'M' ? 'Male' : sex === 'F' ? 'Female' : sex,
           age: age || 16,
-          sem1: { scores: sem1Scores, total: sem1Total, average: sem1Avg, rank: sem1Rank, absent: 0 },
-          sem2: { scores: sem2Scores, total: sem2Total, average: sem2Avg, rank: sem2Rank, absent: 0 },
-          avg: { scores: avgScores, total: avgTotal, average: avgAvg, rank: '—' },
+          sem1: { scores: sem1Scores, total: sem1Total, average: sem1Avg, rank: sem1Rank, absent: 0, rmark: sem1Remark === 'Promoted' ? 'P' : 'R' },
+          sem2: { scores: sem2Scores, total: sem2Total, average: sem2Avg, rank: sem2Rank, absent: 0, rmark: sem2Remark === 'Promoted' ? 'P' : 'R' },
+          avg: { scores: avgScores, total: avgTotal, average: avgAvg, rank: '—', rmark: avgRemark === 'Promoted' ? 'P' : 'R' },
           conduct: 'A',
-          remark: remark === 'Promoted' ? '↑' : '↓',
+          remark: avgRemark === 'Promoted' ? 'P' : 'R',
         });
       }
 
@@ -282,7 +284,7 @@ const SendRosterPage = () => {
             <td>${escapeHtml(student.sem1.rank)}</td>
             <td>${escapeHtml(student.sem1.absent)}</td>
             <td rowspan="3">${escapeHtml(student.conduct)}</td>
-            <td rowspan="3"><strong>${escapeHtml(student.remark)}</strong></td>
+            <td><strong>${escapeHtml(student.sem1.rmark || '')}</strong></td>
           </tr>
           <tr>
             <td>2</td>
@@ -291,6 +293,7 @@ const SendRosterPage = () => {
             <td><strong>${escapeHtml(student.sem2.average)}</strong></td>
             <td>${escapeHtml(student.sem2.rank)}</td>
             <td>${escapeHtml(student.sem2.absent)}</td>
+            <td><strong>${escapeHtml(student.sem2.rmark || '')}</strong></td>
           </tr>
           <tr>
             <td><strong>Av</strong></td>
@@ -299,6 +302,7 @@ const SendRosterPage = () => {
             <td><strong>${escapeHtml(student.avg.average)}</strong></td>
             <td><strong>${escapeHtml(student.avg.rank)}</strong></td>
             <td></td>
+            <td><strong>${escapeHtml(student.avg.rmark || '')}</strong></td>
           </tr>
         `;
       })
@@ -537,8 +541,8 @@ const SendRosterPage = () => {
                       <td className="px-2 py-2 text-center text-gray-700">{student.sem1.rank}</td>
                       <td className="px-2 py-2 text-center text-gray-600">{student.sem1.absent}</td>
                       <td className="px-2 py-2 text-center text-gray-600" rowSpan={3}>{student.conduct}</td>
-                      <td className={`px-2 py-2 text-center font-bold ${student.remark === '↑' ? 'text-green-600' : 'text-red-600'}`} rowSpan={3}>
-                        {student.remark}
+                      <td className={`px-2 py-2 text-center font-bold ${student.sem1.rmark === 'P' ? 'text-green-600' : 'text-red-600'}`}>
+                        {student.sem1.rmark || '—'}
                       </td>
                     </tr>
                     {/* Semester 2 Row */}
@@ -556,6 +560,9 @@ const SendRosterPage = () => {
                       <td className="px-2 py-2 text-center font-semibold text-gray-800">{student.sem2.average}</td>
                       <td className="px-2 py-2 text-center text-gray-700">{student.sem2.rank}</td>
                       <td className="px-2 py-2 text-center text-gray-600">{student.sem2.absent}</td>
+                      <td className={`px-2 py-2 text-center font-bold ${student.sem2.rmark === 'P' ? 'text-green-600' : 'text-red-600'}`}>
+                        {student.sem2.rmark || '—'}
+                      </td>
                     </tr>
                     {/* Average Row */}
                     <tr
@@ -572,6 +579,9 @@ const SendRosterPage = () => {
                       <td className="px-2 py-2 text-center font-bold text-gray-900">{student.avg.average}</td>
                       <td className="px-2 py-2 text-center font-bold text-gray-900">{student.avg.rank}</td>
                       <td className="px-2 py-2 text-center text-gray-600"></td>
+                      <td className={`px-2 py-2 text-center font-bold ${student.avg.rmark === 'P' ? 'text-green-600' : 'text-red-600'}`}>
+                        {student.avg.rmark || '—'}
+                      </td>
                     </tr>
                   </>
                 ))}

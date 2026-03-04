@@ -19,7 +19,7 @@ const listAcademicYearsForLifecycle = async (req, res) => {
     const [years] = await pool.query(
       `SELECT id, name, start_date, end_date, is_current, lifecycle_status
        FROM academic_years
-       ORDER BY start_date DESC, id DESC`
+       ORDER BY id DESC`
     );
     return res.status(200).json({
       success: true,
@@ -50,7 +50,7 @@ const listSemestersForLifecycle = async (req, res) => {
       query += ' WHERE s.academic_year_id = ?';
       params.push(academic_year_id);
     }
-    query += ' ORDER BY ay.start_date DESC, s.semester_number ASC, s.id ASC';
+    query += ' ORDER BY ay.id DESC, s.semester_number ASC, s.id ASC';
     const [semesters] = await pool.query(query, params);
     return res.status(200).json({
       success: true,
@@ -3218,6 +3218,242 @@ const lockSemester = async (req, res) =>
 const reopenSemester = async (req, res) =>
   updateSemesterLifecycleStatus(req, res, 'open');
 
+// ==========================================
+// PROMOTION CRITERIA (School Head manages for their school)
+// ==========================================
+
+const listPromotionCriteria = async (req, res) => {
+  try {
+    const schoolId = req.user.school_id;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
+
+    const [countResult] = await pool.query(
+      'SELECT COUNT(*) as total FROM promotion_criteria WHERE school_id = ?',
+      [schoolId]
+    );
+    const totalItems = countResult[0].total;
+    const totalPages = Math.ceil(totalItems / limit);
+
+    const [criteria] = await pool.query(
+      `SELECT * FROM promotion_criteria WHERE school_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+      [schoolId, limit, offset]
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        items: criteria.map(c => ({
+          id: c.id,
+          name: c.name,
+          passing_average: parseFloat(c.passing_average),
+          passing_per_subject: parseFloat(c.passing_per_subject),
+          max_failing_subjects: c.max_failing_subjects,
+          is_active: c.is_active === 1,
+          is_default: false,
+          created_at: c.created_at
+        })),
+        pagination: { page, limit, total_items: totalItems, total_pages: totalPages }
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error('List promotion criteria error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch promotion criteria.' }
+    });
+  }
+};
+
+const getPromotionCriteria = async (req, res) => {
+  try {
+    const { criteria_id } = req.params;
+    const schoolId = req.user.school_id;
+
+    const [criteria] = await pool.query(
+      'SELECT * FROM promotion_criteria WHERE id = ? AND school_id = ?',
+      [criteria_id, schoolId]
+    );
+
+    if (criteria.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: { code: 'NOT_FOUND', message: 'Promotion criteria not found.' }
+      });
+    }
+
+    const c = criteria[0];
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: c.id,
+        name: c.name,
+        passing_average: parseFloat(c.passing_average),
+        passing_per_subject: parseFloat(c.passing_per_subject),
+        max_failing_subjects: c.max_failing_subjects,
+        is_active: c.is_active === 1,
+        created_at: c.created_at
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error('Get promotion criteria error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch promotion criteria.' }
+    });
+  }
+};
+
+const createPromotionCriteria = async (req, res) => {
+  try {
+    const schoolId = req.user.school_id;
+    const { name, passing_average, passing_per_subject, max_failing_subjects, is_active } = req.body;
+
+    if (!name || passing_average === undefined || passing_per_subject === undefined || max_failing_subjects === undefined) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'Name, passing_average, passing_per_subject, and max_failing_subjects are required.' }
+      });
+    }
+
+    const [result] = await pool.query(
+      `INSERT INTO promotion_criteria (school_id, name, passing_average, passing_per_subject, max_failing_subjects, is_active)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [schoolId, name, passing_average, passing_per_subject, max_failing_subjects, is_active !== false]
+    );
+
+    const [created] = await pool.query('SELECT * FROM promotion_criteria WHERE id = ?', [result.insertId]);
+    const c = created[0];
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        id: c.id,
+        name: c.name,
+        passing_average: parseFloat(c.passing_average),
+        passing_per_subject: parseFloat(c.passing_per_subject),
+        max_failing_subjects: c.max_failing_subjects,
+        is_active: c.is_active === 1,
+        created_at: c.created_at
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error('Create promotion criteria error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to create promotion criteria.' }
+    });
+  }
+};
+
+const updatePromotionCriteria = async (req, res) => {
+  try {
+    const { criteria_id } = req.params;
+    const schoolId = req.user.school_id;
+    const { name, passing_average, passing_per_subject, max_failing_subjects, is_active } = req.body;
+
+    const [existing] = await pool.query(
+      'SELECT * FROM promotion_criteria WHERE id = ? AND school_id = ?',
+      [criteria_id, schoolId]
+    );
+
+    if (existing.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: { code: 'NOT_FOUND', message: 'Promotion criteria not found.' }
+      });
+    }
+
+    const updates = [];
+    const params = [];
+    if (name !== undefined) { updates.push('name = ?'); params.push(name); }
+    if (passing_average !== undefined) { updates.push('passing_average = ?'); params.push(passing_average); }
+    if (passing_per_subject !== undefined) { updates.push('passing_per_subject = ?'); params.push(passing_per_subject); }
+    if (max_failing_subjects !== undefined) { updates.push('max_failing_subjects = ?'); params.push(max_failing_subjects); }
+    if (is_active !== undefined) { updates.push('is_active = ?'); params.push(is_active); }
+
+    if (updates.length === 0) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'No fields to update.' }
+      });
+    }
+
+    params.push(criteria_id, schoolId);
+    await pool.query(`UPDATE promotion_criteria SET ${updates.join(', ')} WHERE id = ? AND school_id = ?`, params);
+
+    const [updated] = await pool.query('SELECT * FROM promotion_criteria WHERE id = ?', [criteria_id]);
+    const c = updated[0];
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: c.id,
+        name: c.name,
+        passing_average: parseFloat(c.passing_average),
+        passing_per_subject: parseFloat(c.passing_per_subject),
+        max_failing_subjects: c.max_failing_subjects,
+        is_active: c.is_active === 1,
+        created_at: c.created_at
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error('Update promotion criteria error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to update promotion criteria.' }
+    });
+  }
+};
+
+const deletePromotionCriteria = async (req, res) => {
+  try {
+    const { criteria_id } = req.params;
+    const schoolId = req.user.school_id;
+
+    const [existing] = await pool.query(
+      'SELECT * FROM promotion_criteria WHERE id = ? AND school_id = ?',
+      [criteria_id, schoolId]
+    );
+
+    if (existing.length === 0) {
+      return res.status(404).json({
+        success: false,
+        data: null,
+        error: { code: 'NOT_FOUND', message: 'Promotion criteria not found.' }
+      });
+    }
+
+    await pool.query('DELETE FROM promotion_criteria WHERE id = ? AND school_id = ?', [criteria_id, schoolId]);
+
+    return res.status(200).json({
+      success: true,
+      data: { message: 'Promotion criteria deleted successfully.' },
+      error: null
+    });
+  } catch (error) {
+    console.error('Delete promotion criteria error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to delete promotion criteria.' }
+    });
+  }
+};
+
 module.exports = {
   // Lifecycle metadata
   listAcademicYearsForLifecycle, listSemestersForLifecycle,
@@ -3246,7 +3482,9 @@ module.exports = {
   // Store House Users
   createStoreHouseUser, listStoreHouseUsers, updateStoreHouseUser, deactivateStoreHouseUser, activateStoreHouseUser, deleteStoreHouseUser, resetStoreHouseUserPassword,
   // Multi-year lifecycle
-  initializeClassesForAcademicYear, openSemester, closeSemesterSubmission, lockSemester, reopenSemester
+  initializeClassesForAcademicYear, openSemester, closeSemesterSubmission, lockSemester, reopenSemester,
+  // Promotion Criteria
+  listPromotionCriteria, getPromotionCriteria, createPromotionCriteria, updatePromotionCriteria, deletePromotionCriteria
 };
 
 
