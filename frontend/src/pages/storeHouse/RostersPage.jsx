@@ -23,8 +23,12 @@ const RostersPage = () => {
   const [rosterDetail, setRosterDetail] = useState(null);       // primary roster (clicked)
   const [companionDetail, setCompanionDetail] = useState(null);  // other semester for same class
   const [semesters, setSemesters] = useState([]);
+  const [grades, setGrades] = useState([]);
+  const [classes, setClasses] = useState([]);
   const [selectedAcademicYearId, setSelectedAcademicYearId] = useState('');
   const [selectedSemesterId, setSelectedSemesterId] = useState('');
+  const [selectedGradeId, setSelectedGradeId] = useState('');
+  const [selectedClassId, setSelectedClassId] = useState('');
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -33,8 +37,10 @@ const RostersPage = () => {
     const loadPeriods = async () => {
       try {
         const res = await getAvailablePeriods();
-        if (res.success && res.data?.semesters) {
+        if (res.success && res.data) {
           setSemesters(res.data.semesters || []);
+          setGrades(res.data.grades || []);
+          setClasses(res.data.classes || []);
         }
       } catch (err) {
         console.error('Error loading periods:', err);
@@ -45,7 +51,7 @@ const RostersPage = () => {
 
   useEffect(() => {
     fetchRosters();
-  }, [selectedAcademicYearId, selectedSemesterId]);
+  }, [selectedAcademicYearId, selectedSemesterId, selectedGradeId, selectedClassId]);
 
   const fetchRosters = async () => {
     setLoading(true);
@@ -54,6 +60,8 @@ const RostersPage = () => {
       const params = {};
       if (selectedAcademicYearId) params.academic_year_id = selectedAcademicYearId;
       if (selectedSemesterId) params.semester_id = selectedSemesterId;
+      if (selectedGradeId) params.grade_id = selectedGradeId;
+      if (selectedClassId) params.class_id = selectedClassId;
       const res = await listRosters(params);
       if (res.success) {
         setRosters(res.data.items || []);
@@ -523,6 +531,31 @@ const RostersPage = () => {
                 {semesters.filter((s) => !selectedAcademicYearId || String(s.academic_year_id) === String(selectedAcademicYearId)).map((s) => (
                   <option key={s.id} value={s.id}>{s.name || `Semester ${s.semester_number}`}</option>
                 ))}
+              </select>
+              <select
+                value={selectedGradeId}
+                onChange={(e) => {
+                  setSelectedGradeId(e.target.value);
+                  setSelectedClassId('');
+                }}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              >
+                <option value="">All Grades</option>
+                {grades.map((g) => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
+              <select
+                value={selectedClassId}
+                onChange={(e) => setSelectedClassId(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              >
+                <option value="">All Classes</option>
+                {classes
+                  .filter((c) => !selectedGradeId || String(c.grade_id) === String(selectedGradeId))
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>{c.grade_name} - {c.name}</option>
+                  ))}
               </select>
             </>
           )}

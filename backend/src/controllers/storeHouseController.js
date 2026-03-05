@@ -27,9 +27,20 @@ const listAvailablePeriods = async (req, res) => {
 
     const yearIds = years.map((y) => y.id);
     if (yearIds.length === 0) {
+      const [grades] = await pool.query('SELECT id, name, level FROM grades WHERE school_id = ? ORDER BY level ASC', [schoolId]);
+      const [classes] = await pool.query(
+        `SELECT c.id, c.name, c.grade_id, g.name as grade_name FROM classes c
+         JOIN grades g ON g.id = c.grade_id WHERE g.school_id = ? ORDER BY g.level, c.name`,
+        [schoolId]
+      );
       return res.status(200).json({
         success: true,
-        data: { academic_years: [], semesters: [] },
+        data: {
+          academic_years: [],
+          semesters: [],
+          grades: grades.map(g => ({ id: g.id, name: g.name, level: g.level })),
+          classes: classes.map(c => ({ id: c.id, name: c.name, grade_id: c.grade_id, grade_name: c.grade_name }))
+        },
         error: null
       });
     }
@@ -43,9 +54,28 @@ const listAvailablePeriods = async (req, res) => {
       [yearIds]
     );
 
+    // Also fetch grades and classes for roster filters
+    const [grades] = await pool.query(
+      'SELECT id, name, level FROM grades WHERE school_id = ? ORDER BY level ASC',
+      [schoolId]
+    );
+    const [classes] = await pool.query(
+      `SELECT c.id, c.name, c.grade_id, g.name as grade_name
+       FROM classes c
+       JOIN grades g ON g.id = c.grade_id
+       WHERE g.school_id = ?
+       ORDER BY g.level, c.name`,
+      [schoolId]
+    );
+
     return res.status(200).json({
       success: true,
-      data: { academic_years: years, semesters },
+      data: {
+        academic_years: years,
+        semesters,
+        grades: grades.map(g => ({ id: g.id, name: g.name, level: g.level })),
+        classes: classes.map(c => ({ id: c.id, name: c.name, grade_id: c.grade_id, grade_name: c.grade_name }))
+      },
       error: null
     });
   } catch (error) {

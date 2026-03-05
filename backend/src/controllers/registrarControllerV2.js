@@ -157,36 +157,39 @@ const listStudents = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const offset = (page - 1) * limit;
+    const academicYearId = req.query.academic_year_id || null;
+
     let whereClause = "u.role = 'student' AND u.school_id = ?";
     const params = [schoolId];
+    let baseFrom = 'FROM students s JOIN users u ON s.user_id = u.id JOIN classes c ON s.class_id = c.id JOIN grades g ON c.grade_id = g.id';
+
+    if (academicYearId) {
+      baseFrom = `FROM student_enrollments se
+        JOIN students s ON s.id = se.student_id
+        JOIN users u ON s.user_id = u.id
+        JOIN classes c ON c.id = se.class_id
+        JOIN grades g ON c.grade_id = g.id
+        WHERE se.academic_year_id = ? AND u.school_id = ?`;
+      params.unshift(academicYearId);
+      whereClause = '1=1';
+    }
     if (req.query.grade_id) { whereClause += ' AND g.id = ?'; params.push(req.query.grade_id); }
     if (req.query.class_id) { whereClause += ' AND c.id = ?'; params.push(req.query.class_id); }
-    if (req.query.academic_year_id) { whereClause += ' AND s.academic_year_id = ?'; params.push(req.query.academic_year_id); }
+    if (!academicYearId && req.query.academic_year_id) { whereClause += ' AND s.academic_year_id = ?'; params.push(req.query.academic_year_id); }
     if (req.query.status && req.query.status !== 'all') { whereClause += ' AND u.is_active = ?'; params.push(req.query.status === 'active'); }
     if (req.query.search) { whereClause += ' AND (u.name LIKE ? OR s.student_id_number LIKE ?)'; params.push(`%${req.query.search}%`, `%${req.query.search}%`); }
     if (req.query.gender) { whereClause += ' AND u.gender = ?'; params.push(req.query.gender); }
 
-    const [countRows] = await pool.query(
-      `SELECT COUNT(*) as total
-       FROM students s
-       JOIN users u ON s.user_id = u.id
-       JOIN classes c ON s.class_id = c.id
-       JOIN grades g ON c.grade_id = g.id
-       WHERE ${whereClause}`,
-      params
-    );
-    const [rows] = await pool.query(
-      `SELECT s.id, s.student_id_number, s.date_of_birth, u.id as user_id, u.name as full_name, u.gender, u.is_active, u.created_at,
+    const andClause = baseFrom.includes('WHERE') ? ' AND ' : ' WHERE ';
+    const countQuery = `SELECT COUNT(DISTINCT s.id) as total ${baseFrom}${andClause}${whereClause}`;
+    const selectQuery = `SELECT s.id, s.student_id_number, s.date_of_birth, u.id as user_id, u.name as full_name, u.gender, u.is_active, u.created_at,
               g.id as grade_id, g.name as grade_name, c.id as class_id, c.name as class_name
-       FROM students s
-       JOIN users u ON s.user_id = u.id
-       JOIN classes c ON s.class_id = c.id
-       JOIN grades g ON c.grade_id = g.id
-       WHERE ${whereClause}
+       ${baseFrom}${andClause}${whereClause}
        ORDER BY u.created_at DESC
-       LIMIT ? OFFSET ?`,
-      [...params, limit, offset]
-    );
+       LIMIT ? OFFSET ?`;
+
+    const [countRows] = await pool.query(countQuery, params);
+    const [rows] = await pool.query(selectQuery, [...params, limit, offset]);
     return res.status(200).json({
       success: true,
       data: {
@@ -1586,17 +1589,98 @@ const getRegistrationMetadata = async (req, res) => {
 const getStatistics = async (req, res) => {
   try {
     const schoolId = req.user.school_id;
+    const academicYearId = req.query.academic_year_id || null;
     const school = await getSchool(schoolId);
-    const [[studentTotal]] = await pool.query("SELECT COUNT(*) as total FROM users WHERE school_id = ? AND role = 'student'", [schoolId]);
-    const [[studentActive]] = await pool.query("SELECT COUNT(*) as total FROM users WHERE school_id = ? AND role = 'student' AND is_active = true", [schoolId]);
-    const [[studentMale]] = await pool.query("SELECT COUNT(*) as total FROM users WHERE school_id = ? AND role = 'student' AND gender = 'M'", [schoolId]);
-    const [[studentFemale]] = await pool.query("SELECT COUNT(*) as total FROM users WHERE school_id = ? AND role = 'student' AND gender = 'F'", [schoolId]);
+
+    // When academic_year_id is provided, count students/parents enrolled in that year (via student_enrollments)
+    // Otherwise count all in school (legacy behavior)
+    let studentTotal, studentActive, studentMale, studentFemale;
+    let parentTotal, parentActive;
+
+    if (academicYearId) {
+      // Students enrolled in this academic year (from student_enrollments)
+      const [[st]] = await pool.query(
+        `SELECT COUNT(DISTINCT se.student_id) as total
+         FROM student_enrollments se
+         JOIN students s ON s.id = se.student_id
+         JOIN users u ON u.id = s.user_id
+         WHERE se.academic_year_id = ? AND u.school_id = ?`,
+        [academicYearId, schoolId]
+      );
+      studentTotal = st;
+
+      const [[sa]] = await pool.query(
+        `SELECT COUNT(DISTINCT se.student_id) as total
+         FROM student_enrollments se
+         JOIN students s ON s.id = se.student_id
+         JOIN users u ON u.id = s.user_id
+         WHERE se.academic_year_id = ? AND u.school_id = ? AND u.is_active = true`,
+        [academicYearId, schoolId]
+      );
+      studentActive = sa;
+
+      const [[sm]] = await pool.query(
+        `SELECT COUNT(DISTINCT se.student_id) as total
+         FROM student_enrollments se
+         JOIN students s ON s.id = se.student_id
+         JOIN users u ON u.id = s.user_id
+         WHERE se.academic_year_id = ? AND u.school_id = ? AND u.gender = 'M'`,
+        [academicYearId, schoolId]
+      );
+      studentMale = sm;
+
+      const [[sf]] = await pool.query(
+        `SELECT COUNT(DISTINCT se.student_id) as total
+         FROM student_enrollments se
+         JOIN students s ON s.id = se.student_id
+         JOIN users u ON u.id = s.user_id
+         WHERE se.academic_year_id = ? AND u.school_id = ? AND u.gender = 'F'`,
+        [academicYearId, schoolId]
+      );
+      studentFemale = sf;
+
+      // Parents linked to students enrolled in this year
+      const [[pt]] = await pool.query(
+        `SELECT COUNT(DISTINCT sp.parent_id) as total
+         FROM student_parents sp
+         JOIN student_enrollments se ON se.student_id = sp.student_id
+         JOIN students s ON s.id = sp.student_id
+         JOIN users u ON u.id = s.user_id
+         WHERE se.academic_year_id = ? AND u.school_id = ?`,
+        [academicYearId, schoolId]
+      );
+      parentTotal = pt;
+
+      const [[pa]] = await pool.query(
+        `SELECT COUNT(DISTINCT sp.parent_id) as total
+         FROM student_parents sp
+         JOIN student_enrollments se ON se.student_id = sp.student_id
+         JOIN students s ON s.id = sp.student_id
+         JOIN users u ON u.id = s.user_id
+         JOIN users up ON up.id = sp.parent_id
+         WHERE se.academic_year_id = ? AND u.school_id = ? AND up.is_active = true`,
+        [academicYearId, schoolId]
+      );
+      parentActive = pa;
+    } else {
+      const [[st]] = await pool.query("SELECT COUNT(*) as total FROM users WHERE school_id = ? AND role = 'student'", [schoolId]);
+      const [[sa]] = await pool.query("SELECT COUNT(*) as total FROM users WHERE school_id = ? AND role = 'student' AND is_active = true", [schoolId]);
+      const [[sm]] = await pool.query("SELECT COUNT(*) as total FROM users WHERE school_id = ? AND role = 'student' AND gender = 'M'", [schoolId]);
+      const [[sf]] = await pool.query("SELECT COUNT(*) as total FROM users WHERE school_id = ? AND role = 'student' AND gender = 'F'", [schoolId]);
+      const [[pt]] = await pool.query("SELECT COUNT(*) as total FROM users WHERE school_id = ? AND role = 'parent'", [schoolId]);
+      const [[pa]] = await pool.query("SELECT COUNT(*) as total FROM users WHERE school_id = ? AND role = 'parent' AND is_active = true", [schoolId]);
+      studentTotal = st;
+      studentActive = sa;
+      studentMale = sm;
+      studentFemale = sf;
+      parentTotal = pt;
+      parentActive = pa;
+    }
+
     const [[teacherTotal]] = await pool.query("SELECT COUNT(*) as total FROM users WHERE school_id = ? AND role IN ('teacher','class_head')", [schoolId]);
     const [[teacherActive]] = await pool.query("SELECT COUNT(*) as total FROM users WHERE school_id = ? AND role IN ('teacher','class_head') AND is_active = true", [schoolId]);
     const [[teacherMale]] = await pool.query("SELECT COUNT(*) as total FROM users WHERE school_id = ? AND role IN ('teacher','class_head') AND gender = 'M'", [schoolId]);
     const [[teacherFemale]] = await pool.query("SELECT COUNT(*) as total FROM users WHERE school_id = ? AND role IN ('teacher','class_head') AND gender = 'F'", [schoolId]);
-    const [[parentTotal]] = await pool.query("SELECT COUNT(*) as total FROM users WHERE school_id = ? AND role = 'parent'", [schoolId]);
-    const [[parentActive]] = await pool.query("SELECT COUNT(*) as total FROM users WHERE school_id = ? AND role = 'parent' AND is_active = true", [schoolId]);
 
     const [byGradeRows] = await pool.query(
       `SELECT g.name as grade_name, COUNT(s.id) as total

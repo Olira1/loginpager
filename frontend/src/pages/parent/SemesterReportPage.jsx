@@ -345,6 +345,25 @@ const SemesterReportPage = () => {
                         : ''}
                     </td>
                   </tr>
+                  {/* Rmark - Promotion status (Promoted / Not Promoted) */}
+                  <tr className="bg-red-50">
+                    <td className="py-2.5 px-4 text-gray-900 font-semibold border-t border-red-100">Rmark</td>
+                    <td className="py-2.5 px-4 text-center border-t border-red-100">
+                      <span className={getRmarkText(sem1Summary?.remark) === 'Promoted' ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>
+                        {getRmarkText(sem1Summary?.remark) || ''}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-4 text-center border-t border-red-100">
+                      <span className={getRmarkText(sem2Summary?.remark) === 'Promoted' ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>
+                        {getRmarkText(sem2Summary?.remark) || ''}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-4 text-center border-t border-red-100">
+                      <span className={getRmarkText(getOverallRmark(sem1Summary, sem2Summary)) === 'Promoted' ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>
+                        {getRmarkText(getOverallRmark(sem1Summary, sem2Summary)) || ''}
+                      </span>
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -370,6 +389,27 @@ const getOrdinal = (n) => {
     case 3: return 'rd';
     default: return 'th';
   }
+};
+
+// Helper: normalize remark to full text (handles 'P'/'R' or 'Promoted'/'Not Promoted')
+const getRmarkText = (r) => {
+  if (!r) return null;
+  if (r === 'Promoted' || r === 'P') return 'Promoted';
+  if (r === 'Not Promoted' || r === 'R') return 'Not Promoted';
+  return r;
+};
+
+// Helper: compute overall Rmark from both semesters (uses average when both exist)
+const getOverallRmark = (sem1Summary, sem2Summary) => {
+  const avg1 = sem1Summary?.average;
+  const avg2 = sem2Summary?.average;
+  if (avg1 != null && avg2 != null) {
+    const combinedAvg = (avg1 + avg2) / 2;
+    return combinedAvg >= 50 ? 'Promoted' : 'Not Promoted';
+  }
+  if (avg1 != null) return getRmarkText(sem1Summary?.remark) || (avg1 >= 50 ? 'Promoted' : 'Not Promoted');
+  if (avg2 != null) return getRmarkText(sem2Summary?.remark) || (avg2 >= 50 ? 'Promoted' : 'Not Promoted');
+  return getRmarkText(sem1Summary?.remark) || getRmarkText(sem2Summary?.remark);
 };
 
 export default SemesterReportPage;
