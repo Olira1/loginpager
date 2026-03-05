@@ -2,7 +2,6 @@ const DemoCredentials = () => {
   const accounts = [
     {
       role: "School Head",
-      name: "Adunya",
       email: "adu@gmail.com",
       password: "#Password1",
     },
