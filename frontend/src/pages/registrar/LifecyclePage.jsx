@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
 import {
+  listPromotionCriteria,
   previewPromotions,
   commitPromotions,
   getStudentEnrollments,
@@ -27,6 +28,7 @@ const RegistrarLifecyclePage = () => {
   const [enrollments, setEnrollments] = useState([]);
   const [batch, setBatch] = useState(null);
   const [metadata, setMetadata] = useState({ academic_years: [], grades: [], classes: [] });
+  const [promotionCriteria, setPromotionCriteria] = useState([]);
   const [students, setStudents] = useState([]);
   const [batches, setBatches] = useState([]);
   const [metaLoading, setMetaLoading] = useState(true);
@@ -35,13 +37,15 @@ const RegistrarLifecyclePage = () => {
     const loadMeta = async () => {
       try {
         setMetaLoading(true);
-        const [metaRes, studentsRes, batchesRes] = await Promise.all([
+        const [metaRes, criteriaRes, studentsRes, batchesRes] = await Promise.all([
           getRegistrationMetadata(),
+          listPromotionCriteria(),
           getStudents({ page: 1, limit: 500 }),
           getRegistrationBatches({ page: 1, limit: 200 })
         ]);
         if (!metaRes.success) throw new Error(metaRes.error?.message || 'Failed to load metadata.');
         setMetadata(metaRes.data || { academic_years: [], grades: [], classes: [] });
+        setPromotionCriteria(criteriaRes.success ? criteriaRes.data?.items || [] : []);
         setStudents(studentsRes.success ? studentsRes.data?.items || [] : []);
         setBatches(batchesRes.success ? batchesRes.data?.items || [] : []);
         setForm((prev) => ({
@@ -116,7 +120,7 @@ const RegistrarLifecyclePage = () => {
 
       <div className="bg-white border border-gray-100 rounded-xl p-4 space-y-3">
         <h2 className="font-semibold text-gray-900">Promotion Preview / Commit</h2>
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
           <select className="px-3 py-2 border rounded-lg" value={form.from_academic_year_id} onChange={(e) => setForm((f) => ({ ...f, from_academic_year_id: e.target.value }))}>
             <option value="">From Academic Year</option>
             {(metadata.academic_years || []).map((year) => (
@@ -141,28 +145,51 @@ const RegistrarLifecyclePage = () => {
               <option key={cls.id} value={cls.id}>{cls.name}</option>
             ))}
           </select>
-          <input className="px-3 py-2 border rounded-lg" type="number" placeholder="Promotion Criteria ID (optional)" value={form.promotion_criteria_id} onChange={(e) => setForm((f) => ({ ...f, promotion_criteria_id: e.target.value }))} />
+          <select
+            className={`px-3 py-2 border rounded-lg ${!form.promotion_criteria_id ? 'border-amber-400 bg-amber-50' : ''}`}
+            value={form.promotion_criteria_id}
+            onChange={(e) => setForm((f) => ({ ...f, promotion_criteria_id: e.target.value }))}
+            title="Required. Set by School Head under Promotion Criteria."
+          >
+            <option value="">Promotion Criteria (required)</option>
+            {promotionCriteria.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} (passing avg: {c.passing_average})
+              </option>
+            ))}
+          </select>
         </div>
+        {promotionCriteria.length === 0 ? (
+          <div className="p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-sm">
+            No promotion criteria found. Ask the School Head to create promotion criteria first (School Portal → Promotion Criteria).
+          </div>
+        ) : null}
         <div className="flex gap-2">
           <button
-            disabled={loading}
+            disabled={loading || !form.promotion_criteria_id}
             onClick={() => doAction(() => previewPromotions(payload), (data) => { setPreview(data); setSuccess('Promotion preview generated.'); })}
-            className="px-4 py-2 rounded-lg border hover:bg-gray-50"
+            className="px-4 py-2 rounded-lg border hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Preview
           </button>
           <button
-            disabled={loading}
+            disabled={loading || !form.promotion_criteria_id}
             onClick={() => doAction(() => commitPromotions({ ...payload, class_mappings: [] }), (data) => { setSuccess(`Promotion commit completed. Batch ${data.batch_code}`); })}
-            className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700"
+            className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Commit
           </button>
         </div>
         {preview ? (
-          <div className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">
-            Eligible: {preview.eligible} | Promoted: {preview.promoted} | Repeated: {preview.repeated} | Graduated: {preview.graduated}
-            {preview.conflicts?.length ? ` | Conflicts: ${preview.conflicts.length}` : ''}
+          <div className="space-y-1">
+            <div className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">
+              Eligible: {preview.eligible} | Promoted: {preview.promoted} | Repeated: {preview.repeated} | Graduated: {preview.graduated}
+              {preview.conflicts?.length ? ` | Conflicts: ${preview.conflicts.length}` : ''}
+              {preview.passing_average != null ? ` (passing avg: ${preview.passing_average})` : ''}
+            </div>
+            {preview.eligible > 0 && preview.promoted === 0 && preview.repeated === preview.eligible ? (
+              <p className="text-xs text-amber-700">No students promoted. Ensure Class Head has published semester results for this academic year.</p>
+            ) : null}
           </div>
         ) : null}
       </div>

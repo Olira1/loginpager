@@ -127,6 +127,14 @@ export const getRegistrationMetadata = async () => {
 // ============ MULTI-YEAR LIFECYCLE ============
 
 /**
+ * List promotion criteria for the school (set by School Head)
+ */
+export const listPromotionCriteria = async () => {
+  const response = await api.get('/registrar/promotion-criteria');
+  return response.data;
+};
+
+/**
  * Preview promotions before commit
  * @param {Object} data
  */
@@ -194,6 +202,7 @@ export default {
   resetUserPassword,
   getRegistrarStatistics,
   getRegistrationMetadata,
+  listPromotionCriteria,
   previewPromotions,
   commitPromotions,
   getStudentEnrollments,

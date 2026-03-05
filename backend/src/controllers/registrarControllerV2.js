@@ -1728,6 +1728,48 @@ const getStatistics = async (req, res) => {
   }
 };
 
+// List promotion criteria for the registrar's school (set by School Head)
+const listPromotionCriteria = async (req, res) => {
+  try {
+    const schoolId = req.user.school_id;
+    if (!schoolId) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'Registrar must belong to a school.' }
+      });
+    }
+    const [criteria] = await pool.query(
+      `SELECT id, name, passing_average, passing_per_subject, max_failing_subjects, is_active
+       FROM promotion_criteria
+       WHERE school_id = ? AND is_active = 1
+       ORDER BY name ASC`,
+      [schoolId]
+    );
+    return res.status(200).json({
+      success: true,
+      data: {
+        items: criteria.map(c => ({
+          id: c.id,
+          name: c.name,
+          passing_average: parseFloat(c.passing_average),
+          passing_per_subject: parseFloat(c.passing_per_subject),
+          max_failing_subjects: c.max_failing_subjects
+        })),
+        message: 'Select a promotion criteria set by the School Head. Promotion decisions depend on it.'
+      },
+      error: null
+    });
+  } catch (error) {
+    console.error('List promotion criteria (registrar) error:', error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch promotion criteria.' }
+    });
+  }
+};
+
 const buildPromotionDecision = (gradeLevel, yearAverage, passingAverage) => {
   if (yearAverage >= passingAverage) {
     if (Number(gradeLevel) >= 12) return 'graduated';
@@ -1753,6 +1795,13 @@ const previewPromotions = async (req, res) => {
         success: false,
         data: null,
         error: { code: 'VALIDATION_ERROR', message: 'from_academic_year_id and to_academic_year_id are required.' }
+      });
+    }
+    if (!promotion_criteria_id) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'Promotion criteria is required. Select one set by the School Head.' }
       });
     }
 
@@ -1868,6 +1917,13 @@ const commitPromotions = async (req, res) => {
         success: false,
         data: null,
         error: { code: 'UNAUTHORIZED', message: 'User not authenticated.' }
+      });
+    }
+    if (!promotion_criteria_id) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'Promotion criteria is required. Select one set by the School Head.' }
       });
     }
 
@@ -2254,6 +2310,7 @@ module.exports = {
   listParents,
   getParent,
   updateParent,
+  listPromotionCriteria,
   previewPromotions,
   commitPromotions,
   listStudentEnrollments,

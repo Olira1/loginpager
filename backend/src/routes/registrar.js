@@ -65,6 +65,7 @@ router.get('/statistics', registrarController.getStatistics);
 // ==========================================
 // MULTI-YEAR LIFECYCLE
 // ==========================================
+router.get('/promotion-criteria', registrarController.listPromotionCriteria);
 router.post('/promotions/preview', registrarController.previewPromotions);
 router.post('/promotions/commit', registrarController.commitPromotions);
 router.get('/registration-batches', registrarController.listRegistrationBatches);
