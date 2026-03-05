@@ -2,28 +2,36 @@ const DemoCredentials = () => {
   const accounts = [
     {
       role: "School Head",
-      email: "kebede@aass.edu.et",
-      password: "password123",
+      name: "Adunya",
+      email: "adu@gmail.com",
+      password: "#Password1",
     },
     {
-      role: "Class Head",
-      email: "henok@aass.edu.et",
-      password: "password123",
+      role: "Registrar",
+      email: "yos@gmail.com",
+      password: "#Password1",
+    },
+    {
+      role: "Store House",
+      email: "beti@gmail.com",
+      password: "#Password1",
     },
     {
       role: "Teacher",
-      email: ["yohannes@aass.edu.et", "sara@aass.edu.et"],
-      password: "password123",
+      email: ["TCH202600004", "TCH202600005", "TCH202600003", "TCH202600001", "TCH202600002"],
+      password: "#Password1",
     },
     {
       role: "Student",
-      email: "kidist.a@student.aass.edu.et",
-      password: "password123",
+      email: ["STU202600005", "STU202600004"],
+      password: "#Password1",
     },
     {
       role: "Parent",
-      email: "alemayehu.t@parent.aass.edu.et",
-      password: "password123",
+      credentials: [
+        { email: "0956789012", password: "cOj8Peb!y#BT" },
+        { email: "0945678901", password: "E17LsuH$1Ons" },
+      ],
     },
   ];
 
@@ -39,19 +47,33 @@ const DemoCredentials = () => {
             key={index}
             className="p-3 rounded-lg bg-white border border-gray-100"
           >
-            <p className="font-medium text-blue-600 mb-1">{acc.role}</p>
+            <p className="font-medium text-blue-600 mb-1">
+              {acc.role}
+              {acc.name && <span className="text-gray-600 font-normal"> ({acc.name})</span>}
+            </p>
 
-            {Array.isArray(acc.email) ? (
-              acc.email.map((mail, i) => (
+            {/* Parent: multiple credentials with different passwords */}
+            {acc.credentials ? (
+              acc.credentials.map((cred, i) => (
                 <p key={i} className="text-sm text-gray-700">
-                  📧 {mail}
+                  📧 {cred.email} &nbsp; 🔑 {cred.password}
                 </p>
               ))
+            ) : Array.isArray(acc.email) ? (
+              <>
+                {acc.email.map((mail, i) => (
+                  <p key={i} className="text-sm text-gray-700">
+                    📧 {mail}
+                  </p>
+                ))}
+                <p className="text-sm text-gray-700">🔑 {acc.password}</p>
+              </>
             ) : (
-              <p className="text-sm text-gray-700">📧 {acc.email}</p>
+              <>
+                <p className="text-sm text-gray-700">📧 {acc.email}</p>
+                <p className="text-sm text-gray-700">🔑 {acc.password}</p>
+              </>
             )}
-
-            <p className="text-sm text-gray-700">🔑 {acc.password}</p>
           </div>
         ))}
       </div>
