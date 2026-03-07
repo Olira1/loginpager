@@ -2,12 +2,14 @@
 // Handles viewing grades, reports, and rankings for the logged-in student
 
 const { pool } = require('../config/db');
+const { getSchoolPassingThreshold } = require('../utils/promotionCriteria');
 
 // Helper to get student info from user
 const getStudentInfo = async (userId) => {
   const [students] = await pool.query(
     `SELECT s.id, s.student_id_number as code, u.name, s.sex as gender,
-            s.class_id, c.name as class_name, g.name as grade_name, g.id as grade_id
+            s.class_id, c.name as class_name, g.name as grade_name, g.id as grade_id,
+            u.school_id
      FROM students s
      JOIN users u ON s.user_id = u.id
      JOIN classes c ON s.class_id = c.id
@@ -110,10 +112,10 @@ const listAvailablePeriods = async (req, res) => {
 // VIEW SEMESTER REPORT
 // ==========================================
 
-// Helper: compute promotion remark from average
-const getPromotionRemark = (average) => {
+// Helper: compute promotion remark from average (uses passingThreshold from school)
+const getPromotionRemark = (average, passingThreshold = 50) => {
   if (average == null || average === undefined) return 'Pending';
-  return average >= 50 ? 'Promoted' : 'Not Promoted';
+  return average >= passingThreshold ? 'Promoted' : 'Not Promoted';
 };
 
 /**
@@ -134,6 +136,7 @@ const getSemesterReport = async (req, res) => {
     }
 
     const classContext = await resolveStudentClassContext(student, academic_year_id);
+    const passingThreshold = await getSchoolPassingThreshold(student.school_id);
     const [semesterInfo] = await pool.query('SELECT name, academic_year_id FROM semesters WHERE id = ?', [semester_id]);
     const [yearInfo] = await pool.query('SELECT name FROM academic_years WHERE id = ?', [academic_year_id]);
     const academicYearForSemester = academic_year_id || semesterInfo[0]?.academic_year_id;
@@ -234,7 +237,7 @@ const getSemesterReport = async (req, res) => {
         average: Math.round(average * 100) / 100,
         rank_in_class: rank,
         total_students: totalStudents[0].count,
-        remark: getPromotionRemark(average)
+        remark: getPromotionRemark(average, passingThreshold)
       };
     }
 
@@ -659,6 +662,7 @@ const getYearReport = async (req, res) => {
     }
 
     const classContext = await resolveStudentClassContext(student, academic_year_id);
+    const passingThreshold = await getSchoolPassingThreshold(student.school_id);
     const [yearInfo] = await pool.query('SELECT id, name FROM academic_years WHERE id = ?', [academic_year_id]);
     if (yearInfo.length === 0) {
       return res.status(404).json({
@@ -746,7 +750,7 @@ const getYearReport = async (req, res) => {
           year_total: Math.round(yearTotal * 100) / 100,
           year_average: Math.round(yearAvg * 100) / 100,
           total_students: totalStudents[0].count,
-          remark: yearAvg >= 50 ? 'Promoted' : 'Not Promoted'
+          remark: getPromotionRemark(yearAvg, passingThreshold)
         },
         status: 'available'
       },

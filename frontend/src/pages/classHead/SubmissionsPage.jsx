@@ -378,6 +378,12 @@ const SubmissionsPage = () => {
                 </div>
               ) : reviewData ? (
                 <div className="space-y-6">
+                  {/* Pass threshold from promotion criteria */}
+                  {reviewData.pass_threshold != null && (
+                    <p className="text-xs text-gray-500">
+                      Pass threshold: {reviewData.pass_threshold}% (from School Promotion Criteria)
+                    </p>
+                  )}
                   {/* Class Statistics */}
                   {reviewData.class_statistics && (
                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
@@ -416,26 +422,27 @@ const SubmissionsPage = () => {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
-                        {reviewData.students?.map((student, idx) => (
-                          <tr key={student.student_id} className="hover:bg-gray-50">
-                            <td className="px-4 py-2 text-sm text-gray-500">{idx + 1}</td>
-                            <td className="px-4 py-2 text-sm font-medium text-gray-900">{student.student_name}</td>
-                            <td className="px-4 py-2 text-center text-sm font-medium">
-                              <span className={student.subject_score >= 50 ? 'text-green-600' : 'text-red-600'}>
-                                {student.subject_score}
-                              </span>
-                            </td>
-                            <td className="px-4 py-2 text-center">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                                student.subject_score >= 50
-                                  ? 'bg-green-100 text-green-700'
-                                  : 'bg-red-100 text-red-700'
-                              }`}>
-                                {student.subject_score >= 50 ? 'Pass' : 'Fail'}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
+                        {reviewData.students?.map((student, idx) => {
+                          const isPass = student.is_pass ?? (student.subject_score >= (reviewData.pass_threshold ?? 50));
+                          return (
+                            <tr key={student.student_id} className="hover:bg-gray-50">
+                              <td className="px-4 py-2 text-sm text-gray-500">{idx + 1}</td>
+                              <td className="px-4 py-2 text-sm font-medium text-gray-900">{student.student_name}</td>
+                              <td className="px-4 py-2 text-center text-sm font-medium">
+                                <span className={isPass ? 'text-green-600' : 'text-red-600'}>
+                                  {student.subject_score}
+                                </span>
+                              </td>
+                              <td className="px-4 py-2 text-center">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                  isPass ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                }`}>
+                                  {isPass ? 'Pass' : 'Fail'}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>

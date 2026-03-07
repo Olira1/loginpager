@@ -16,6 +16,7 @@ const RegistrarLifecyclePage = () => {
     from_academic_year_id: '',
     to_academic_year_id: '',
     source_grade_level: '',
+    source_class_id: '',
     default_target_class_id: '',
     promotion_criteria_id: ''
   });
@@ -66,24 +67,28 @@ const RegistrarLifecyclePage = () => {
   const doAction = async (fn, onSuccess) => {
     try {
       setLoading(true);
+      setError('');
       const res = await fn();
       if (!res.success) throw new Error(res.error?.message || 'Operation failed.');
       onSuccess(res.data);
-      setError('');
     } catch (err) {
-      setError(err.message || 'Operation failed.');
+      const msg = err.response?.data?.error?.message || err.message || 'Operation failed.';
+      setError(msg);
     } finally {
       setLoading(false);
     }
   };
 
-  const payload = {
-    from_academic_year_id: Number(form.from_academic_year_id),
-    to_academic_year_id: Number(form.to_academic_year_id),
-    source_grade_level: Number(form.source_grade_level),
-    default_target_class_id: Number(form.default_target_class_id),
-    promotion_criteria_id: form.promotion_criteria_id ? Number(form.promotion_criteria_id) : null
-  };
+  // Source classes: classes in FROM year for the selected source grade (e.g. 10A, 10B, 10C)
+  const sourceClassOptions = useMemo(() => {
+    const fromYear = Number(form.from_academic_year_id);
+    const sourceLevel = Number(form.source_grade_level);
+    if (!fromYear || !sourceLevel) return [];
+    const gradeIds = (metadata.grades || []).filter((g) => Number(g.level) === sourceLevel).map((g) => Number(g.id));
+    return (metadata.classes || []).filter(
+      (c) => Number(c.academic_year_id) === fromYear && (gradeIds.length === 0 || gradeIds.includes(Number(c.grade_id)))
+    );
+  }, [form.from_academic_year_id, form.source_grade_level, metadata.classes, metadata.grades]);
 
   // Target classes for promoted students: one grade level up (e.g. Grade 9 -> Grade 10)
   const classOptions = useMemo(() => {
@@ -97,6 +102,43 @@ const RegistrarLifecyclePage = () => {
       : (metadata.grades || []).map((g) => Number(g.id));
     return (metadata.classes || []).filter((c) => Number(c.academic_year_id) === toYear && (gradeIds.length === 0 || gradeIds.includes(Number(c.grade_id))));
   }, [form.to_academic_year_id, form.source_grade_level, metadata.classes, metadata.grades]);
+
+  // Extract section from class name (e.g. "10 B" -> "B", "10A" -> "A", "Grade 10 - 10 A" -> "A") for matching 10B->11B
+  const getClassSection = (name) => (name || '').match(/[A-Za-z]+$/)?.[0] || '';
+
+  // Build class_mappings: 10A->11A, 10B->11B, 10C->11C by matching section
+  const classMappings = useMemo(() => {
+    const mappings = [];
+    if (form.source_class_id) {
+      const srcClass = sourceClassOptions.find((c) => String(c.id) === String(form.source_class_id));
+      const targetId = form.default_target_class_id ? Number(form.default_target_class_id) : null;
+      if (srcClass && targetId) {
+        mappings.push({ from_class_id: srcClass.id, to_class_id: targetId });
+      }
+    } else {
+      const targetLevel = Number(form.source_grade_level) > 0 ? Number(form.source_grade_level) + 1 : null;
+      const targetGradeIds = targetLevel ? (metadata.grades || []).filter((g) => Number(g.level) === targetLevel).map((g) => Number(g.id)) : [];
+      const targetClasses = (metadata.classes || []).filter(
+        (c) => Number(c.academic_year_id) === Number(form.to_academic_year_id) && (targetGradeIds.length === 0 || targetGradeIds.includes(Number(c.grade_id)))
+      );
+      for (const src of sourceClassOptions) {
+        const section = getClassSection(src.name);
+        const target = targetClasses.find((t) => getClassSection(t.name) === section);
+        if (target) mappings.push({ from_class_id: src.id, to_class_id: target.id });
+      }
+    }
+    return mappings;
+  }, [form.source_class_id, form.default_target_class_id, form.source_grade_level, form.to_academic_year_id, sourceClassOptions, metadata.grades, metadata.classes]);
+
+  const payload = {
+    from_academic_year_id: Number(form.from_academic_year_id),
+    to_academic_year_id: Number(form.to_academic_year_id),
+    source_grade_level: Number(form.source_grade_level),
+    source_class_ids: form.source_class_id ? [Number(form.source_class_id)] : [],
+    default_target_class_id: form.default_target_class_id ? Number(form.default_target_class_id) : null,
+    class_mappings: classMappings,
+    promotion_criteria_id: form.promotion_criteria_id ? Number(form.promotion_criteria_id) : null
+  };
 
   return (
     <div className="space-y-6">
@@ -133,14 +175,26 @@ const RegistrarLifecyclePage = () => {
               <option key={year.id} value={year.id}>{year.name}</option>
             ))}
           </select>
-          <select className="px-3 py-2 border rounded-lg" value={form.source_grade_level} onChange={(e) => setForm((f) => ({ ...f, source_grade_level: e.target.value, default_target_class_id: '' }))}>
+          <select className="px-3 py-2 border rounded-lg" value={form.source_grade_level} onChange={(e) => setForm((f) => ({ ...f, source_grade_level: e.target.value, source_class_id: '', default_target_class_id: '' }))}>
             <option value="">Source Grade Level</option>
             {(metadata.grades || []).map((grade) => (
               <option key={grade.id} value={grade.level}>Grade {grade.level} ({grade.name})</option>
             ))}
           </select>
+          <select className="px-3 py-2 border rounded-lg" value={form.source_class_id} onChange={(e) => {
+            const val = e.target.value;
+            const srcClass = sourceClassOptions.find((c) => String(c.id) === val);
+            const section = srcClass ? getClassSection(srcClass.name) : '';
+            const match = section ? classOptions.find((t) => getClassSection(t.name) === section) : null;
+            setForm((f) => ({ ...f, source_class_id: val, default_target_class_id: match ? String(match.id) : '' }));
+          }}>
+            <option value="">Source Class (all)</option>
+            {sourceClassOptions.map((cls) => (
+              <option key={cls.id} value={cls.id}>{cls.name}</option>
+            ))}
+          </select>
           <select className="px-3 py-2 border rounded-lg" value={form.default_target_class_id} onChange={(e) => setForm((f) => ({ ...f, default_target_class_id: e.target.value }))}>
-            <option value="">Default Target Class</option>
+            <option value="">{form.source_class_id ? 'Target Class' : 'Default Target Class'}</option>
             {classOptions.map((cls) => (
               <option key={cls.id} value={cls.id}>{cls.name}</option>
             ))}
@@ -174,7 +228,7 @@ const RegistrarLifecyclePage = () => {
           </button>
           <button
             disabled={loading || !form.promotion_criteria_id}
-            onClick={() => doAction(() => commitPromotions({ ...payload, class_mappings: [] }), (data) => { setSuccess(`Promotion commit completed. Batch ${data.batch_code}`); })}
+            onClick={() => doAction(() => commitPromotions(payload), (data) => { setSuccess(`Promotion commit completed. Batch ${data.batch_code}`); })}
             className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Commit

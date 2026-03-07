@@ -156,9 +156,89 @@ const resolveStudentClassForYear = async (studentId, academicYearId = null) => {
   };
 };
 
+const { getSchoolPassingThreshold } = require('../utils/promotionCriteria');
+
 // Helper to determine promotion remark based on average
 const getPromotionRemark = (average, passingAverage = 50) => {
   return average >= passingAverage ? 'Promoted' : 'Not Promoted';
+};
+
+// Build and persist semester results for all students in a class/year.
+// This is reused by compile and publish to prevent missing ssr rows.
+const buildAndPersistSemesterResults = async ({ classId, academicYearId, semesterId, schoolId }) => {
+  const passingThreshold = await getSchoolPassingThreshold(schoolId);
+
+  // Prefer enrollment scope (year-aware), fallback to current class snapshot.
+  let [students] = await pool.query(
+    `SELECT se.student_id
+     FROM student_enrollments se
+     WHERE se.class_id = ? AND se.academic_year_id = ?`,
+    [classId, academicYearId]
+  );
+  if (students.length === 0) {
+    [students] = await pool.query(
+      'SELECT id as student_id FROM students WHERE class_id = ?',
+      [classId]
+    );
+  }
+
+  const studentResults = [];
+  for (const student of students) {
+    const [scores] = await pool.query(
+      `SELECT SUM(m.score / m.max_score * COALESCE(aw.weight_percent, at.default_weight_percent)) as subject_score
+       FROM marks m
+       JOIN teaching_assignments ta ON m.teaching_assignment_id = ta.id
+       JOIN assessment_types at ON m.assessment_type_id = at.id
+       JOIN grade_submissions gs ON gs.teaching_assignment_id = ta.id AND gs.semester_id = m.semester_id
+       LEFT JOIN assessment_weights aw ON aw.teaching_assignment_id = m.teaching_assignment_id 
+                                       AND aw.assessment_type_id = m.assessment_type_id 
+                                       AND aw.semester_id = m.semester_id
+       WHERE m.student_id = ? AND m.semester_id = ? AND ta.class_id = ? AND gs.status = 'approved'
+       GROUP BY ta.subject_id`,
+      [student.student_id, semesterId, classId]
+    );
+
+    const total = scores.reduce((sum, s) => sum + (parseFloat(s.subject_score) || 0), 0);
+    const subjectsCount = scores.length;
+    const average = subjectsCount > 0 ? total / subjectsCount : 0;
+
+    studentResults.push({
+      student_id: student.student_id,
+      total: Math.round(total * 100) / 100,
+      average: Math.round(average * 100) / 100
+    });
+  }
+
+  // Keep ranking deterministic and consistent with compile endpoint.
+  studentResults.sort((a, b) => b.total - a.total);
+  studentResults.forEach((s, idx) => { s.rank = idx + 1; });
+
+  for (const result of studentResults) {
+    await pool.query(
+      `INSERT INTO student_semester_results
+       (student_id, semester_id, total_score, average_score, rank_in_class, remark)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+       total_score = VALUES(total_score),
+       average_score = VALUES(average_score),
+       rank_in_class = VALUES(rank_in_class),
+       remark = VALUES(remark)`,
+      [
+        result.student_id,
+        semesterId,
+        result.total,
+        result.average,
+        result.rank,
+        getPromotionRemark(result.average, passingThreshold)
+      ]
+    );
+  }
+
+  const classAverage = studentResults.length > 0
+    ? studentResults.reduce((sum, s) => sum + s.average, 0) / studentResults.length
+    : 0;
+
+  return { studentResults, classAverage: Math.round(classAverage * 100) / 100 };
 };
 
 // ==========================================
@@ -339,17 +419,31 @@ const getStudentRankings = async (req, res) => {
       });
     }
 
-    const [semesterInfo] = await pool.query('SELECT name FROM semesters WHERE id = ?', [semester_id]);
+    const [semesterInfo] = await pool.query('SELECT name, academic_year_id FROM semesters WHERE id = ?', [semester_id]);
+    const academicYearId = semesterInfo[0]?.academic_year_id;
 
-    // Get all students
-    const [students] = await pool.query(
-      `SELECT s.id as student_id, u.name as student_name
-       FROM students s
-       JOIN users u ON s.user_id = u.id
-       WHERE s.class_id = ?
+    const passingThreshold = await getSchoolPassingThreshold(req.user.school_id);
+
+    // Use student_enrollments (same source as Registrar); fallback to students.class_id
+    let [students] = await pool.query(
+      `SELECT se.student_id, u.name as student_name
+       FROM student_enrollments se
+       JOIN students s ON s.id = se.student_id
+       JOIN users u ON u.id = s.user_id
+       WHERE se.class_id = ? AND se.academic_year_id = ?
        ORDER BY u.name`,
-      [classInfo.id]
+      [classInfo.id, academicYearId]
     );
+    if (students.length === 0) {
+      [students] = await pool.query(
+        `SELECT s.id as student_id, u.name as student_name
+         FROM students s
+         JOIN users u ON s.user_id = u.id
+         WHERE s.class_id = ?
+         ORDER BY u.name`,
+        [classInfo.id]
+      );
+    }
 
     // Calculate totals for each student
     const studentResults = [];
@@ -381,7 +475,7 @@ const getStudentRankings = async (req, res) => {
         total: Math.round(total * 100) / 100,
         average: Math.round(average * 100) / 100,
         subjects_count: subjectsCount,
-        remark: getPromotionRemark(average)
+        remark: getPromotionRemark(average, passingThreshold)
       });
     }
 
@@ -473,6 +567,9 @@ const reviewSubmission = async (req, res) => {
     const classInfo = { id: submission.class_id };
     const semesterId = submission.semester_id;
 
+    // Get school's promotion criteria for pass/fail threshold (School Head sets this)
+    const passThreshold = await getSchoolPassingThreshold(req.user.school_id);
+
     // Get students with their combined subject scores (filter marks by submission's semester)
     const [students] = await pool.query(
       `SELECT s.id as student_id, u.name as student_name,
@@ -490,13 +587,13 @@ const reviewSubmission = async (req, res) => {
       [submission.teaching_assignment_id, semesterId, classInfo.id]
     );
 
-    // Calculate statistics (parse to float since MySQL returns DECIMALs as strings)
+    // Calculate statistics using promotion criteria's passing_per_subject
     const scores = students.map(s => parseFloat(s.subject_score) || 0).filter(s => s > 0);
     const average = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
     const highest = scores.length > 0 ? Math.max(...scores) : 0;
     const lowest = scores.length > 0 ? Math.min(...scores) : 0;
-    const passCount = scores.filter(s => s >= 50).length;
-    const failCount = scores.filter(s => s < 50).length;
+    const passCount = scores.filter(s => s >= passThreshold).length;
+    const failCount = scores.filter(s => s < passThreshold).length;
 
     return res.status(200).json({
       success: true,
@@ -506,11 +603,17 @@ const reviewSubmission = async (req, res) => {
         teacher: { id: submission.teacher_id, name: submission.teacher_name },
         submitted_at: submission.submitted_at,
         status: submission.status,
-        students: students.map(s => ({
-          student_id: s.student_id,
-          student_name: s.student_name,
-          subject_score: Math.round((parseFloat(s.subject_score) || 0) * 100) / 100
-        })),
+        pass_threshold: passThreshold,
+        students: students.map(s => {
+          const score = Math.round((parseFloat(s.subject_score) || 0) * 100) / 100;
+          const isPass = score >= passThreshold;
+          return {
+            student_id: s.student_id,
+            student_name: s.student_name,
+            subject_score: score,
+            is_pass: isPass
+          };
+        }),
         class_statistics: {
           average: Math.round(average * 100) / 100,
           highest: Math.round(highest * 100) / 100,
@@ -671,6 +774,28 @@ const rejectSubmission = async (req, res) => {
 // COMPILE GRADES
 // ==========================================
 
+// Helper: check if all subjects are approved for the given class and semester(s)
+const checkAllSubjectsApproved = async (classId, semesterIds) => {
+  const ids = Array.isArray(semesterIds) ? semesterIds : [semesterIds];
+  const unapproved = [];
+  for (const semId of ids) {
+    const [rows] = await pool.query(
+      `SELECT ta.id, s.name as subject_name, COALESCE(gs.status, 'pending') as status
+       FROM teaching_assignments ta
+       JOIN subjects s ON ta.subject_id = s.id
+       LEFT JOIN grade_submissions gs ON gs.teaching_assignment_id = ta.id AND gs.semester_id = ?
+       WHERE ta.class_id = ?`,
+      [semId, classId]
+    );
+    for (const r of rows) {
+      if (r.status !== 'approved') {
+        unapproved.push({ subject: r.subject_name, semester_id: semId, status: r.status });
+      }
+    }
+  }
+  return { allApproved: unapproved.length === 0, unapproved };
+};
+
 /**
  * POST /api/v1/class-head/compile-grades
  * Compile final grades (total, average, rank)
@@ -688,66 +813,27 @@ const compileGrades = async (req, res) => {
       });
     }
 
-    const [semesterInfo] = await pool.query('SELECT name FROM semesters WHERE id = ?', [semester_id]);
-
-    // Get all students
-    const [students] = await pool.query(
-      'SELECT id as student_id FROM students WHERE class_id = ?',
-      [classInfo.id]
-    );
-
-    // Calculate and store results for each student
-    const studentResults = [];
-    for (const student of students) {
-      // Calculate total from all submitted/approved subjects
-      const [scores] = await pool.query(
-        `SELECT SUM(m.score / m.max_score * COALESCE(aw.weight_percent, at.default_weight_percent)) as subject_score
-         FROM marks m
-         JOIN teaching_assignments ta ON m.teaching_assignment_id = ta.id
-         JOIN assessment_types at ON m.assessment_type_id = at.id
-         JOIN grade_submissions gs ON gs.teaching_assignment_id = ta.id AND gs.semester_id = m.semester_id
-         LEFT JOIN assessment_weights aw ON aw.teaching_assignment_id = m.teaching_assignment_id 
-                                         AND aw.assessment_type_id = m.assessment_type_id 
-                                         AND aw.semester_id = m.semester_id
-         WHERE m.student_id = ? AND m.semester_id = ? AND ta.class_id = ? AND gs.status IN ('submitted', 'approved')
-         GROUP BY ta.subject_id`,
-        [student.student_id, semester_id, classInfo.id]
-      );
-
-      // parseFloat needed: MySQL DECIMAL values come back as strings
-      const total = scores.reduce((sum, s) => sum + (parseFloat(s.subject_score) || 0), 0);
-      const subjectsCount = scores.length;
-      const average = subjectsCount > 0 ? total / subjectsCount : 0;
-
-      studentResults.push({
-        student_id: student.student_id,
-        total: Math.round(total * 100) / 100,
-        average: Math.round(average * 100) / 100,
-        subjects_count: subjectsCount
+    const { allApproved, unapproved } = await checkAllSubjectsApproved(classInfo.id, semester_id);
+    if (!allApproved) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'SUBJECTS_NOT_APPROVED',
+          message: 'All subjects must be approved first. Please approve all subject submissions in Review Submissions before compiling grades.'
+        }
       });
     }
 
-    // Sort and assign ranks
-    studentResults.sort((a, b) => b.total - a.total);
-    studentResults.forEach((s, idx) => { s.rank = idx + 1; });
+    const [semesterInfo] = await pool.query('SELECT name, academic_year_id FROM semesters WHERE id = ?', [semester_id]);
+    const academicYearId = semesterInfo[0]?.academic_year_id || academic_year_id;
 
-    // Store in student_semester_results table
-    for (const result of studentResults) {
-      await pool.query(
-        `INSERT INTO student_semester_results 
-         (student_id, semester_id, total_score, average_score, rank_in_class, remark)
-         VALUES (?, ?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE 
-         total_score = VALUES(total_score), average_score = VALUES(average_score), 
-         rank_in_class = VALUES(rank_in_class), remark = VALUES(remark)`,
-        [result.student_id, semester_id, result.total, result.average, result.rank, getPromotionRemark(result.average)]
-      );
-    }
-
-    // Calculate class average
-    const classAverage = studentResults.length > 0
-      ? studentResults.reduce((sum, s) => sum + s.average, 0) / studentResults.length
-      : 0;
+    const { studentResults, classAverage } = await buildAndPersistSemesterResults({
+      classId: classInfo.id,
+      academicYearId: academicYearId,
+      semesterId: semester_id,
+      schoolId: req.user.school_id
+    });
 
     return res.status(200).json({
       success: true,
@@ -756,9 +842,9 @@ const compileGrades = async (req, res) => {
         class_name: classInfo.name,
         semester: semesterInfo[0]?.name,
         compilation_status: 'completed',
-        total_students: students.length,
+        total_students: studentResults.length,
         students_compiled: studentResults.length,
-        class_average: Math.round(classAverage * 100) / 100,
+        class_average: classAverage,
         compiled_at: new Date().toISOString()
       },
       error: null
@@ -906,14 +992,44 @@ const publishSemesterResults = async (req, res) => {
     const [semesterInfo] = await pool.query('SELECT name FROM semesters WHERE id = ?', [semester_id]);
     const [yearInfo] = await pool.query('SELECT name FROM academic_years WHERE id = ?', [academic_year_id]);
 
-    // Update results as published for students in this class
-    const [updateResult] = await pool.query(
+    const { allApproved } = await checkAllSubjectsApproved(classInfo.id, semester_id);
+    if (!allApproved) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'SUBJECTS_NOT_APPROVED',
+          message: 'All subjects must be approved first. Please approve all subject submissions in Review Submissions before publishing semester results.'
+        }
+      });
+    }
+
+    // Ensure semester rows exist before publishing (prevents missing ssr in registrar lifecycle).
+    await buildAndPersistSemesterResults({
+      classId: classInfo.id,
+      academicYearId: academic_year_id,
+      semesterId: semester_id,
+      schoolId: req.user.school_id
+    });
+
+    // Use student_enrollments (same source as Registrar); fallback to students.class_id when enrollments missing
+    let [updateResult] = await pool.query(
       `UPDATE student_semester_results ssr
-       JOIN students s ON ssr.student_id = s.id
+       JOIN student_enrollments se ON se.student_id = ssr.student_id
+         AND se.class_id = ? AND se.academic_year_id = ?
        SET ssr.is_published = TRUE, ssr.published_at = NOW()
-       WHERE s.class_id = ? AND ssr.semester_id = ?`,
-      [classInfo.id, semester_id]
+       WHERE ssr.semester_id = ?`,
+      [classInfo.id, academic_year_id, semester_id]
     );
+    if (updateResult.affectedRows === 0) {
+      [updateResult] = await pool.query(
+        `UPDATE student_semester_results ssr
+         JOIN students s ON ssr.student_id = s.id
+         SET ssr.is_published = TRUE, ssr.published_at = NOW()
+         WHERE s.class_id = ? AND ssr.semester_id = ?`,
+        [classInfo.id, semester_id]
+      );
+    }
 
     return res.status(200).json({
       success: true,
@@ -978,24 +1094,55 @@ const publishYearResults = async (req, res) => {
     );
 
     const semesterNames = semesters.map(s => s.name);
+    const semesterIds = semesters.map(s => s.id);
 
-    // Mark all semester results as published for this class
+    const { allApproved } = await checkAllSubjectsApproved(classInfo.id, semesterIds);
+    if (!allApproved) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'SUBJECTS_NOT_APPROVED',
+          message: 'All subjects must be approved first. Please approve all subject submissions in Review Submissions for both semesters before publishing year results.'
+        }
+      });
+    }
+
+    // Use student_enrollments (same source as Registrar); fallback to students.class_id when enrollments missing
     let totalPublished = 0;
     for (const semester of semesters) {
-      const [updateResult] = await pool.query(
+      // Ensure compiled semester rows exist before publication.
+      await buildAndPersistSemesterResults({
+        classId: classInfo.id,
+        academicYearId: yearId,
+        semesterId: semester.id,
+        schoolId: req.user.school_id
+      });
+
+      let [updateResult] = await pool.query(
         `UPDATE student_semester_results ssr
-         JOIN students s ON ssr.student_id = s.id
+         JOIN student_enrollments se ON se.student_id = ssr.student_id
+           AND se.class_id = ? AND se.academic_year_id = ?
          SET ssr.is_published = TRUE, ssr.published_at = NOW()
-         WHERE s.class_id = ? AND ssr.semester_id = ? AND ssr.is_published = FALSE`,
-        [classInfo.id, semester.id]
+         WHERE ssr.semester_id = ? AND ssr.is_published = FALSE`,
+        [classInfo.id, yearId, semester.id]
       );
+      if (updateResult.affectedRows === 0) {
+        [updateResult] = await pool.query(
+          `UPDATE student_semester_results ssr
+           JOIN students s ON ssr.student_id = s.id
+           SET ssr.is_published = TRUE, ssr.published_at = NOW()
+           WHERE s.class_id = ? AND ssr.semester_id = ? AND ssr.is_published = FALSE`,
+          [classInfo.id, semester.id]
+        );
+      }
       totalPublished += updateResult.affectedRows;
     }
 
-    // Count total students
+    // Count students enrolled in this class for this year (matches Registrar)
     const [studentCount] = await pool.query(
-      'SELECT COUNT(*) as count FROM students WHERE class_id = ?',
-      [classInfo.id]
+      'SELECT COUNT(DISTINCT student_id) as count FROM student_enrollments WHERE class_id = ? AND academic_year_id = ?',
+      [classInfo.id, yearId]
     );
 
     return res.status(200).json({
@@ -1114,6 +1261,8 @@ const sendRosterToStoreHouse = async (req, res) => {
     const [semRows] = await pool.query('SELECT academic_year_id FROM semesters WHERE id = ?', [semester_id]);
     const semesterYearId = semRows[0]?.academic_year_id || academic_year_id || classInfo.academic_year_id;
 
+    const passingThreshold = await getSchoolPassingThreshold(req.user.school_id);
+
     // Get all subjects for this class (filter by academic year for correct marks)
     const [subjectsData] = await pool.query(
       `SELECT DISTINCT s.id, s.name FROM subjects s
@@ -1170,7 +1319,7 @@ const sendRosterToStoreHouse = async (req, res) => {
         average: Math.round(average * 100) / 100,
         absent_days: 0, // TODO: Implement attendance tracking
         conduct: 'Good',
-        remark: getPromotionRemark(average)
+        remark: getPromotionRemark(average, passingThreshold)
       });
     }
 
@@ -1178,12 +1327,13 @@ const sendRosterToStoreHouse = async (req, res) => {
     rosterStudents.sort((a, b) => b.total - a.total);
     rosterStudents.forEach((s, idx) => { s.rank = idx + 1; });
 
-    // Store roster in database
+    // Store roster in database (include pass_threshold for frontend avg Rmark calculation)
     const rosterData = {
       class_id: classInfo.id,
       class_name: classInfo.name,
       grade_name: classInfo.grade_name,
       class_head: { id: req.user.id, name: req.user.name, phone: req.user.phone },
+      pass_threshold: passingThreshold,
       students: rosterStudents
     };
 
@@ -1275,6 +1425,8 @@ const getStudentReport = async (req, res) => {
     const [semesterInfo] = await pool.query('SELECT name FROM semesters WHERE id = ?', [semester_id]);
     const [yearInfo] = await pool.query('SELECT name FROM academic_years WHERE id = ?', [academic_year_id]);
 
+    const passingThreshold = await getSchoolPassingThreshold(req.user.school_id);
+
     // Get subjects and scores (only subjects with submitted/approved grades)
     const [assignments] = await pool.query(
       `SELECT DISTINCT ta.id, s.name as subject_name, u.name as teacher_name
@@ -1359,7 +1511,8 @@ const getStudentReport = async (req, res) => {
           total_subjects: subjects.length,
           rank_in_class: rankings[0]?.rank || null,
           total_students: totalStudents[0].count,
-          remark: getPromotionRemark(average)
+          remark: getPromotionRemark(average, passingThreshold),
+          pass_threshold: passingThreshold
         },
         generated_at: new Date().toISOString()
       },

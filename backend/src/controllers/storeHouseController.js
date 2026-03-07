@@ -219,6 +219,7 @@ const getRoster = async (req, res) => {
           name: roster.class_head_name,
           phone: roster.class_head_phone
         } : null,
+        pass_threshold: rosterData.pass_threshold ?? 50,
         students: students,
         class_statistics: {
           total_students: students.length,

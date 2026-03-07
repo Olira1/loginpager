@@ -108,18 +108,30 @@ const RegistrarStudentsPage = () => {
 
   const classesForFilter = useMemo(() => {
     if (!filterGrade) return metadata.classes || [];
-    return (metadata.classes || []).filter((c) => Number(c.grade_id) === Number(filterGrade));
-  }, [metadata.classes, filterGrade]);
+    let list = (metadata.classes || []).filter((c) => Number(c.grade_id) === Number(filterGrade));
+    if (filterYear) {
+      list = list.filter((c) => Number(c.academic_year_id) === Number(filterYear));
+    }
+    return list;
+  }, [metadata.classes, filterGrade, filterYear]);
 
   const classesForCreateGrade = useMemo(() => {
     if (!createForm.grade_id) return [];
-    return (metadata.classes || []).filter((c) => Number(c.grade_id) === Number(createForm.grade_id));
-  }, [metadata.classes, createForm.grade_id]);
+    let list = (metadata.classes || []).filter((c) => Number(c.grade_id) === Number(createForm.grade_id));
+    if (createForm.academic_year_id) {
+      list = list.filter((c) => Number(c.academic_year_id) === Number(createForm.academic_year_id));
+    }
+    return list;
+  }, [metadata.classes, createForm.grade_id, createForm.academic_year_id]);
 
   const classesForEditGrade = useMemo(() => {
     if (!editForm.grade_id) return [];
-    return (metadata.classes || []).filter((c) => Number(c.grade_id) === Number(editForm.grade_id));
-  }, [metadata.classes, editForm.grade_id]);
+    let list = (metadata.classes || []).filter((c) => Number(c.grade_id) === Number(editForm.grade_id));
+    if (editForm.academic_year_id) {
+      list = list.filter((c) => Number(c.academic_year_id) === Number(editForm.academic_year_id));
+    }
+    return list;
+  }, [metadata.classes, editForm.grade_id, editForm.academic_year_id]);
 
   const onCreate = async (e) => {
     e.preventDefault();
@@ -303,7 +315,7 @@ const RegistrarStudentsPage = () => {
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
         </select>
-        <select value={filterYear} onChange={(e) => setFilterYear(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg" disabled={metadataLoading}>
+        <select value={filterYear} onChange={(e) => { setFilterYear(e.target.value); setFilterClass(''); }} className="px-3 py-2 border border-gray-300 rounded-lg" disabled={metadataLoading}>
           <option value="">All Years</option>
           {(metadata.academic_years || []).map((ay) => <option key={ay.id} value={ay.id}>{ay.name}</option>)}
         </select>
@@ -400,13 +412,13 @@ const RegistrarStudentsPage = () => {
                 <option value="">Select Grade</option>
                 {(metadata.grades || []).map((g) => <option key={g.id} value={g.id}>{g.level ? `Grade ${g.level}` : g.name}</option>)}
               </select>
-              <select className="border rounded-lg px-3 py-2" value={createForm.class_id} onChange={(e) => setCreateForm((v) => ({ ...v, class_id: e.target.value }))} required disabled={!createForm.grade_id || metadataLoading}>
-                <option value="">{createForm.grade_id ? 'Select Class' : 'Select Grade first'}</option>
-                {classesForCreateGrade.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-              <select className="border rounded-lg px-3 py-2" value={createForm.academic_year_id} onChange={(e) => setCreateForm((v) => ({ ...v, academic_year_id: e.target.value }))} required disabled={metadataLoading}>
+              <select className="border rounded-lg px-3 py-2" value={createForm.academic_year_id} onChange={(e) => setCreateForm((v) => ({ ...v, academic_year_id: e.target.value, class_id: '' }))} required disabled={metadataLoading}>
                 <option value="">Select Academic Year</option>
                 {(metadata.academic_years || []).map((ay) => <option key={ay.id} value={ay.id}>{ay.name}</option>)}
+              </select>
+              <select className="border rounded-lg px-3 py-2" value={createForm.class_id} onChange={(e) => setCreateForm((v) => ({ ...v, class_id: e.target.value }))} required disabled={!createForm.grade_id || metadataLoading}>
+                <option value="">{createForm.grade_id && createForm.academic_year_id ? 'Select Class' : 'Select Grade and Year first'}</option>
+                {classesForCreateGrade.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
               <input className="border rounded-lg px-3 py-2" placeholder="Parent first name" value={createForm.parent_first_name} onChange={(e) => setCreateForm((v) => ({ ...v, parent_first_name: e.target.value }))} required />
               <input className="border rounded-lg px-3 py-2" placeholder="Parent last name" value={createForm.parent_last_name} onChange={(e) => setCreateForm((v) => ({ ...v, parent_last_name: e.target.value }))} required />
@@ -444,13 +456,13 @@ const RegistrarStudentsPage = () => {
                 <option value="">Select Grade</option>
                 {(metadata.grades || []).map((g) => <option key={g.id} value={g.id}>{g.level ? `Grade ${g.level}` : g.name}</option>)}
               </select>
-              <select className="border rounded-lg px-3 py-2" value={editForm.class_id} onChange={(e) => setEditForm((v) => ({ ...v, class_id: e.target.value }))} required disabled={!editForm.grade_id || metadataLoading}>
-                <option value="">{editForm.grade_id ? 'Select Class' : 'Select Grade first'}</option>
-                {classesForEditGrade.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-              <select className="border rounded-lg px-3 py-2" value={editForm.academic_year_id} onChange={(e) => setEditForm((v) => ({ ...v, academic_year_id: e.target.value }))} required disabled={metadataLoading}>
+              <select className="border rounded-lg px-3 py-2" value={editForm.academic_year_id} onChange={(e) => setEditForm((v) => ({ ...v, academic_year_id: e.target.value, class_id: '' }))} required disabled={metadataLoading}>
                 <option value="">Select Academic Year</option>
                 {(metadata.academic_years || []).map((ay) => <option key={ay.id} value={ay.id}>{ay.name}</option>)}
+              </select>
+              <select className="border rounded-lg px-3 py-2" value={editForm.class_id} onChange={(e) => setEditForm((v) => ({ ...v, class_id: e.target.value }))} required disabled={!editForm.grade_id || metadataLoading}>
+                <option value="">{editForm.grade_id && editForm.academic_year_id ? 'Select Class' : 'Select Grade and Year first'}</option>
+                {classesForEditGrade.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
               <input className="border rounded-lg px-3 py-2" placeholder="Parent first name" value={editForm.parent_first_name} onChange={(e) => setEditForm((v) => ({ ...v, parent_first_name: e.target.value }))} required />
               <input className="border rounded-lg px-3 py-2" placeholder="Parent last name" value={editForm.parent_last_name} onChange={(e) => setEditForm((v) => ({ ...v, parent_last_name: e.target.value }))} required />

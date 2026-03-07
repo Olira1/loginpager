@@ -28,6 +28,7 @@ import {
   publishYearResults,
   getStudentReport,
   getLifecycleSemesters,
+  getSubmissionChecklist,
 } from '../../services/classHeadService';
 
 const CompilePublishPage = () => {
@@ -70,6 +71,7 @@ const CompilePublishPage = () => {
   const [publishingYear, setPublishingYear] = useState(false);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
+  const [submissionChecklist, setSubmissionChecklist] = useState(null);
 
   const selectedYearSemesters = semesters
     .filter((s) => String(s.academic_year_id) === String(selectedAcademicYearId))
@@ -150,9 +152,10 @@ const CompilePublishPage = () => {
 
       const sem1Rank = sem1Data?.summary?.rank_in_class ?? rank1Items.find((r) => r.student_id === studentId)?.rank ?? null;
       const sem2Rank = sem2Data?.summary?.rank_in_class ?? rank2Items.find((r) => r.student_id === studentId)?.rank ?? null;
-      const sem1Rmark = sem1Data?.summary?.remark ?? (sem1Avg >= 50 ? 'Promoted' : 'Not Promoted');
-      const sem2Rmark = sem2Data?.summary?.remark ?? (sem2Avg >= 50 ? 'Promoted' : 'Not Promoted');
-      const avgRmark = avgAvg >= 50 ? 'Promoted' : 'Not Promoted';
+      const passThreshold = sem1Data?.summary?.pass_threshold ?? sem2Data?.summary?.pass_threshold ?? 50;
+      const sem1Rmark = sem1Data?.summary?.remark ?? (sem1Avg >= passThreshold ? 'Promoted' : 'Not Promoted');
+      const sem2Rmark = sem2Data?.summary?.remark ?? (sem2Avg >= passThreshold ? 'Promoted' : 'Not Promoted');
+      const avgRmark = avgAvg >= passThreshold ? 'Promoted' : 'Not Promoted';
 
       setStudentReport({
         student: sem1Data?.student || sem2Data?.student,
@@ -220,10 +223,53 @@ const CompilePublishPage = () => {
     }
   };
 
-  // Load rankings on mount and selection change
+  // Fetch submission checklist to check if all subjects are approved
+  const fetchSubmissionChecklist = async () => {
+    if (!selectedSemesterId) return;
+    try {
+      const res = await getSubmissionChecklist({ semester_id: parseInt(selectedSemesterId) });
+      if (res.success) setSubmissionChecklist(res.data);
+      else setSubmissionChecklist(null);
+    } catch {
+      setSubmissionChecklist(null);
+    }
+  };
+
+  // All subjects must be approved for Compile / Publish Semester (selected semester)
+  const allSubjectsApprovedForSemester = submissionChecklist?.subjects?.length
+    ? submissionChecklist.subjects.every((s) => s.status === 'approved')
+    : false;
+
+  // For Publish Year: both semesters must have all subjects approved
+  const [checklistSem2, setChecklistSem2] = useState(null);
+  useEffect(() => {
+    if (sem2Id) {
+      getSubmissionChecklist({ semester_id: parseInt(sem2Id) })
+        .then((res) => setChecklistSem2(res.success ? res.data : null))
+        .catch(() => setChecklistSem2(null));
+    } else {
+      setChecklistSem2(null);
+    }
+  }, [sem2Id]);
+  const [checklistSem1, setChecklistSem1] = useState(null);
+  useEffect(() => {
+    if (sem1Id) {
+      getSubmissionChecklist({ semester_id: parseInt(sem1Id) })
+        .then((res) => setChecklistSem1(res.success ? res.data : null))
+        .catch(() => setChecklistSem1(null));
+    } else {
+      setChecklistSem1(null);
+    }
+  }, [sem1Id]);
+  const allSubjectsApprovedForYear =
+    (checklistSem1?.subjects?.length ? checklistSem1.subjects.every((s) => s.status === 'approved') : false) &&
+    (sem2Id ? (checklistSem2?.subjects?.length ? checklistSem2.subjects.every((s) => s.status === 'approved') : false) : false);
+
+  // Load rankings and submission checklist on mount and selection change
   useEffect(() => {
     if (selectedSemesterId) {
       fetchRankings();
+      fetchSubmissionChecklist();
       computeAverageRankings();
       setCurrentStudentIndex(0);
       setStudentReport(null);
@@ -249,6 +295,10 @@ const CompilePublishPage = () => {
 
   // Handle compile grades
   const handleCompile = async () => {
+    if (!allSubjectsApprovedForSemester) {
+      setError('All subjects must be approved first. Please approve all subject submissions in Review Submissions before compiling grades.');
+      return;
+    }
     if (!window.confirm('This will calculate total, average, and rank for all students. Continue?')) {
       return;
     }
@@ -282,6 +332,10 @@ const CompilePublishPage = () => {
 
   // Handle publish semester results
   const handlePublishSemester = async () => {
+    if (!allSubjectsApprovedForSemester) {
+      setError('All subjects must be approved first. Please approve all subject submissions in Review Submissions before publishing semester results.');
+      return;
+    }
     if (!window.confirm('This will make semester results visible to students and parents. Continue?')) {
       return;
     }
@@ -315,6 +369,10 @@ const CompilePublishPage = () => {
     const yearId = selectedAcademicYearId ? parseInt(selectedAcademicYearId, 10) : NaN;
     if (!yearId || isNaN(yearId)) {
       setError('Please select an academic year first.');
+      return;
+    }
+    if (!allSubjectsApprovedForYear) {
+      setError('All subjects must be approved first. Please approve all subject submissions in Review Submissions for both semesters before publishing year results.');
       return;
     }
     if (!window.confirm('This will publish the full year results and can notify students, parents, and the store house. Continue?')) {
@@ -438,10 +496,13 @@ const CompilePublishPage = () => {
           <p className="text-sm text-gray-500 mb-4">
             Processes all approved subject grades and calculates each student's total score, average, rank, and promotion status.
           </p>
+          {!allSubjectsApprovedForSemester && (
+            <p className="text-xs text-amber-600 mb-2">All subjects must be approved first.</p>
+          )}
           <button
             onClick={handleCompile}
-            disabled={compiling}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors disabled:opacity-50 text-sm font-medium"
+            disabled={compiling || !allSubjectsApprovedForSemester}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
           >
             {compiling ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
             {compiling ? 'Compiling...' : 'Compile Now'}
@@ -462,10 +523,13 @@ const CompilePublishPage = () => {
           <p className="text-sm text-gray-500 mb-4">
             Makes the compiled semester results visible to students and parents. Ensure grades are compiled first.
           </p>
+          {!allSubjectsApprovedForSemester && (
+            <p className="text-xs text-amber-600 mb-2">All subjects must be approved first.</p>
+          )}
           <button
             onClick={handlePublishSemester}
-            disabled={publishingSemester}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50 text-sm font-medium"
+            disabled={publishingSemester || !allSubjectsApprovedForSemester}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
           >
             {publishingSemester ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             {publishingSemester ? 'Publishing...' : 'Publish Semester'}
@@ -486,10 +550,13 @@ const CompilePublishPage = () => {
           <p className="text-sm text-gray-500 mb-4">
             Publishes full year results and sends data to the store house. Both semesters must be finalized first.
           </p>
+          {!allSubjectsApprovedForYear && (
+            <p className="text-xs text-amber-600 mb-2">All subjects must be approved for both semesters first.</p>
+          )}
           <button
             onClick={handlePublishYear}
-            disabled={publishingYear}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors disabled:opacity-50 text-sm font-medium"
+            disabled={publishingYear || !allSubjectsApprovedForYear}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
           >
             {publishingYear ? <Loader2 className="w-4 h-4 animate-spin" /> : <BookOpen className="w-4 h-4" />}
             {publishingYear ? 'Publishing...' : 'Publish Year Results'}
@@ -502,6 +569,9 @@ const CompilePublishPage = () => {
         <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
         <div className="text-sm text-amber-700">
           <p className="font-medium">Important Workflow</p>
+          <p className="mt-1">
+            <strong>Prerequisite:</strong> All subject marks must be approved in Review Submissions before Compile, Publish Semester, or Publish Year.
+          </p>
           <p className="mt-1">
             Follow the steps in order: <strong>1.</strong> Compile grades first to calculate totals and ranks.{' '}
             <strong>2.</strong> Publish semester results. <strong>3.</strong> After both semesters are done, publish year results.

@@ -2,6 +2,7 @@
 // Handles viewing children's grades and reports
 
 const { pool } = require('../config/db');
+const { getSchoolPassingThreshold } = require('../utils/promotionCriteria');
 
 // Helper to verify parent-child relationship
 const verifyParentChild = async (parentUserId, studentId) => {
@@ -18,7 +19,7 @@ const getChildInfo = async (studentId) => {
   const [students] = await pool.query(
     `SELECT s.id, s.student_id_number as code, u.name, s.sex as gender,
             s.class_id, c.name as class_name, g.name as grade_name, g.id as grade_id,
-            sc.name as school_name
+            sc.name as school_name, g.school_id
      FROM students s
      JOIN users u ON s.user_id = u.id
      JOIN classes c ON s.class_id = c.id
@@ -197,6 +198,7 @@ const getChildSemesterReport = async (req, res) => {
     }
 
     const classContext = await resolveChildClassContext(child, academic_year_id);
+    const passingThreshold = await getSchoolPassingThreshold(child.school_id);
     const [semesterInfo] = await pool.query('SELECT name FROM semesters WHERE id = ?', [semester_id]);
     const [yearInfo] = await pool.query('SELECT name FROM academic_years WHERE id = ?', [academic_year_id]);
 
@@ -264,6 +266,7 @@ const getChildSemesterReport = async (req, res) => {
           total_students: totalStudents[0].count,
           remark: result.remark
         },
+        passing_threshold: passingThreshold,
         published_at: result.published_at
       },
       error: null
@@ -580,6 +583,7 @@ const getChildYearReport = async (req, res) => {
     }
 
     const classContext = await resolveChildClassContext(child, academic_year_id);
+    const passingThreshold = await getSchoolPassingThreshold(child.school_id);
     const [yearInfo] = await pool.query('SELECT name FROM academic_years WHERE id = ?', [academic_year_id]);
 
     // Get all semesters for this academic year
@@ -667,7 +671,7 @@ const getChildYearReport = async (req, res) => {
           year_total: Math.round(yearTotal * 100) / 100,
           year_average: Math.round(yearAverage * 100) / 100,
           total_students: totalStudents[0].count,
-          remark: yearAverage >= 50 ? 'Promoted' : 'Not Promoted'
+          remark: yearAverage >= passingThreshold ? 'Promoted' : 'Not Promoted'
         }
       },
       error: null

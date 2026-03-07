@@ -359,8 +359,8 @@ const SemesterReportPage = () => {
                       </span>
                     </td>
                     <td className="py-2.5 px-4 text-center border-t border-red-100">
-                      <span className={getRmarkText(getOverallRmark(sem1Summary, sem2Summary)) === 'Promoted' ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>
-                        {getRmarkText(getOverallRmark(sem1Summary, sem2Summary)) || ''}
+                      <span className={getRmarkText(getOverallRmark(sem1Summary, sem2Summary, sem1Report?.passing_threshold ?? sem2Report?.passing_threshold)) === 'Promoted' ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>
+                        {getRmarkText(getOverallRmark(sem1Summary, sem2Summary, sem1Report?.passing_threshold ?? sem2Report?.passing_threshold)) || ''}
                       </span>
                     </td>
                   </tr>
@@ -399,16 +399,17 @@ const getRmarkText = (r) => {
   return r;
 };
 
-// Helper: compute overall Rmark from both semesters (uses average when both exist)
-const getOverallRmark = (sem1Summary, sem2Summary) => {
+// Helper: compute overall Rmark from both semesters (uses school's passing threshold when available)
+const getOverallRmark = (sem1Summary, sem2Summary, passingThreshold = 50) => {
   const avg1 = sem1Summary?.average;
   const avg2 = sem2Summary?.average;
+  const threshold = passingThreshold != null && !isNaN(Number(passingThreshold)) ? Number(passingThreshold) : 50;
   if (avg1 != null && avg2 != null) {
     const combinedAvg = (avg1 + avg2) / 2;
-    return combinedAvg >= 50 ? 'Promoted' : 'Not Promoted';
+    return combinedAvg >= threshold ? 'Promoted' : 'Not Promoted';
   }
-  if (avg1 != null) return getRmarkText(sem1Summary?.remark) || (avg1 >= 50 ? 'Promoted' : 'Not Promoted');
-  if (avg2 != null) return getRmarkText(sem2Summary?.remark) || (avg2 >= 50 ? 'Promoted' : 'Not Promoted');
+  if (avg1 != null) return getRmarkText(sem1Summary?.remark) || (avg1 >= threshold ? 'Promoted' : 'Not Promoted');
+  if (avg2 != null) return getRmarkText(sem2Summary?.remark) || (avg2 >= threshold ? 'Promoted' : 'Not Promoted');
   return getRmarkText(sem1Summary?.remark) || getRmarkText(sem2Summary?.remark);
 };
 

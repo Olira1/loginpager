@@ -347,9 +347,10 @@ const RostersPage = () => {
                     if (r === 'Not Promoted' || r === 'R') return 'Not Promoted';
                     return r;
                   };
+                  const passThreshold = sem1Data?.pass_threshold ?? sem2Data?.pass_threshold ?? 50;
                   const sem1Rmark = toRemarkText(s1?.remark);
                   const sem2Rmark = toRemarkText(s2?.remark);
-                  const avgRmark = avgAverage != null ? (avgAverage >= 50 ? 'Promoted' : 'Not Promoted') : (sem1Rmark || sem2Rmark);
+                  const avgRmark = avgAverage != null ? (avgAverage >= passThreshold ? 'Promoted' : 'Not Promoted') : (sem1Rmark || sem2Rmark);
 
                   return (
                     <React.Fragment key={student.student_id || idx}>

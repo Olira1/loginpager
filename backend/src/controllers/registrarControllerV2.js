@@ -104,6 +104,16 @@ const createStudent = async (req, res) => {
        VALUES (?, ?, ?, ?, ?, CURDATE(), ?)`,
       [userInserted.insertId, class_id, studentCode, date_of_birth, toSex(gender), academic_year_id]
     );
+
+    // Sync student_enrollments so Teacher/Class Head portals and other features see the student
+    await connection.query(
+      `INSERT INTO student_enrollments
+        (student_id, academic_year_id, grade_id, class_id, status, entry_reason, is_current, started_at, created_by)
+       VALUES (?, ?, ?, ?, 'active', 'new_registration', TRUE, CURDATE(), ?)
+       ON DUPLICATE KEY UPDATE grade_id = VALUES(grade_id), class_id = VALUES(class_id), status = 'active'`,
+      [studentInserted.insertId, academic_year_id, cls.grade_id, class_id, req.user.id]
+    );
+
     const parentResult = await createOrGetParent(connection, schoolId, parent);
     await connection.query(
       `INSERT INTO student_parents (student_id, parent_id, relationship)
@@ -161,21 +171,15 @@ const listStudents = async (req, res) => {
 
     let whereClause = "u.role = 'student' AND u.school_id = ?";
     const params = [schoolId];
-    let baseFrom = 'FROM students s JOIN users u ON s.user_id = u.id JOIN classes c ON s.class_id = c.id JOIN grades g ON c.grade_id = g.id';
+    const baseFrom = 'FROM students s JOIN users u ON s.user_id = u.id JOIN classes c ON s.class_id = c.id JOIN grades g ON c.grade_id = g.id';
 
+    // Filter by academic year from students table (matches Edit Student form)
     if (academicYearId) {
-      baseFrom = `FROM student_enrollments se
-        JOIN students s ON s.id = se.student_id
-        JOIN users u ON s.user_id = u.id
-        JOIN classes c ON c.id = se.class_id
-        JOIN grades g ON c.grade_id = g.id
-        WHERE se.academic_year_id = ? AND u.school_id = ?`;
-      params.unshift(academicYearId);
-      whereClause = '1=1';
+      whereClause += ' AND s.academic_year_id = ?';
+      params.push(academicYearId);
     }
     if (req.query.grade_id) { whereClause += ' AND g.id = ?'; params.push(req.query.grade_id); }
     if (req.query.class_id) { whereClause += ' AND c.id = ?'; params.push(req.query.class_id); }
-    if (!academicYearId && req.query.academic_year_id) { whereClause += ' AND s.academic_year_id = ?'; params.push(req.query.academic_year_id); }
     if (req.query.status && req.query.status !== 'all') { whereClause += ' AND u.is_active = ?'; params.push(req.query.status === 'active'); }
     if (req.query.search) { whereClause += ' AND (u.name LIKE ? OR s.student_id_number LIKE ?)'; params.push(`%${req.query.search}%`, `%${req.query.search}%`); }
     if (req.query.gender) { whereClause += ' AND u.gender = ?'; params.push(req.query.gender); }
@@ -464,6 +468,25 @@ const updateStudent = async (req, res) => {
     if (studentUpdates.length > 0) {
       studentParams.push(student_id);
       await connection.query(`UPDATE students SET ${studentUpdates.join(', ')} WHERE id = ?`, studentParams);
+    }
+
+    // Sync student_enrollments when class or academic year changes (so Teacher/Class Head portals see the student)
+    const finalClassId = class_id !== undefined ? class_id : existingRows[0].current_class_id;
+    const finalAcademicYearId = academic_year_id !== undefined ? academic_year_id : existingRows[0].current_academic_year_id;
+    if ((class_id !== undefined || academic_year_id !== undefined) && finalAcademicYearId && finalClassId) {
+      const [clsRows] = await connection.query(
+        'SELECT grade_id FROM classes WHERE id = ?',
+        [finalClassId]
+      );
+      if (clsRows.length > 0) {
+        await connection.query(
+          `INSERT INTO student_enrollments
+            (student_id, academic_year_id, grade_id, class_id, status, entry_reason, is_current, started_at, created_by)
+           VALUES (?, ?, ?, ?, 'active', 'correction', TRUE, CURDATE(), ?)
+           ON DUPLICATE KEY UPDATE grade_id = VALUES(grade_id), class_id = VALUES(class_id), status = 'active'`,
+          [student_id, finalAcademicYearId, clsRows[0].grade_id, finalClassId, req.user.id]
+        );
+      }
     }
 
     if (parent && (parent.first_name || parent.last_name || parent.phone || parent.relationship)) {
@@ -1786,6 +1809,7 @@ const previewPromotions = async (req, res) => {
       to_academic_year_id,
       source_grade_level,
       source_class_ids = [],
+      class_mappings = [],
       default_target_class_id = null,
       promotion_criteria_id = null
     } = req.body || {};
@@ -1817,6 +1841,23 @@ const previewPromotions = async (req, res) => {
     }
     const passingAverage = Number(criteriaRows[0]?.passing_average ?? 50);
 
+    // Require both semesters to be compiled and published before promotion
+    const [semesterRows] = await pool.query(
+      'SELECT id FROM semesters WHERE academic_year_id = ? ORDER BY semester_number ASC',
+      [from_academic_year_id]
+    );
+    const totalSemesters = semesterRows.length;
+    if (totalSemesters < 2) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Promotion requires both semesters. The academic year must have 2 semesters configured.'
+        }
+      });
+    }
+
     let classFilter = '';
     const params = [schoolId, from_academic_year_id];
     if (source_grade_level !== undefined && source_grade_level !== null) {
@@ -1829,17 +1870,25 @@ const previewPromotions = async (req, res) => {
       params.push(...source_class_ids);
     }
 
+    const classMapping = new Map();
+    for (const item of class_mappings) {
+      if (item?.from_class_id && item?.to_class_id) {
+        classMapping.set(Number(item.from_class_id), Number(item.to_class_id));
+      }
+    }
+
     const [rows] = await pool.query(
       `SELECT se.id as enrollment_id, se.student_id, se.class_id, g.level as grade_level,
               u.name as student_name,
-              COALESCE(AVG(ssr.average_score), 0) as year_average
+              COALESCE(AVG(ssr.average_score), 0) as year_average,
+              COUNT(DISTINCT ssr.semester_id) as published_semesters_count
        FROM student_enrollments se
        JOIN students s ON s.id = se.student_id
        JOIN users u ON u.id = s.user_id
        JOIN classes c ON c.id = se.class_id
        JOIN grades g ON g.id = se.grade_id
        LEFT JOIN semesters sem ON sem.academic_year_id = se.academic_year_id
-       LEFT JOIN student_semester_results ssr ON ssr.student_id = se.student_id AND ssr.semester_id = sem.id
+       LEFT JOIN student_semester_results ssr ON ssr.student_id = se.student_id AND ssr.semester_id = sem.id AND ssr.is_published = TRUE
        WHERE g.school_id = ?
          AND se.academic_year_id = ?
          ${classFilter}
@@ -1848,17 +1897,42 @@ const previewPromotions = async (req, res) => {
       params
     );
 
+    // Include only students with all semesters published; exclude incomplete
+    const complete = rows.filter(r => (r.published_semesters_count || 0) >= totalSemesters);
+    const incomplete = rows.filter(r => (r.published_semesters_count || 0) < totalSemesters);
+
+    if (complete.length === 0) {
+      const names = incomplete.slice(0, 5).map(r => r.student_name).join(', ');
+      const more = incomplete.length > 5 ? ` and ${incomplete.length - 5} more` : '';
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'INCOMPLETE_SEMESTER_RESULTS',
+          message: `No students have published results for both semesters. Class Head must: 1) Compile Grades for both semesters, 2) Publish Semester for both, 3) Publish Year. ${incomplete.length} student(s) missing: ${names}${more}.`
+        }
+      });
+    }
+
+    // Use only students with complete results for preview
+    const eligibleRows = complete;
+    if (incomplete.length > 0) {
+      console.warn(`Promotion preview: ${incomplete.length} student(s) excluded (missing published results):`, incomplete.map(r => r.student_name));
+    }
+
     let promoted = 0;
     let repeated = 0;
     let graduated = 0;
     const conflicts = [];
-    for (const row of rows) {
+    for (const row of eligibleRows) {
       const decision = buildPromotionDecision(row.grade_level, Number(row.year_average) || 0, passingAverage);
       if (decision === 'promoted') promoted += 1;
       else if (decision === 'repeated') repeated += 1;
       else if (decision === 'graduated') graduated += 1;
 
-      if (decision !== 'graduated' && !default_target_class_id) {
+      // Only promoted students require a next-grade target mapping/class.
+      // Repeated students remain in the same grade level by design.
+      if (decision === 'promoted' && !classMapping.get(Number(row.class_id)) && !default_target_class_id) {
         conflicts.push({
           student_id: row.student_id,
           code: 'TARGET_CLASS_NOT_SET',
@@ -1874,7 +1948,8 @@ const previewPromotions = async (req, res) => {
         to_academic_year_id: Number(to_academic_year_id),
         promotion_criteria_id: promotion_criteria_id ? Number(promotion_criteria_id) : null,
         passing_average: passingAverage,
-        eligible: rows.length,
+        eligible: eligibleRows.length,
+        excluded_incomplete: incomplete.length,
         promoted,
         repeated,
         graduated,
@@ -1900,6 +1975,7 @@ const commitPromotions = async (req, res) => {
       from_academic_year_id,
       to_academic_year_id,
       source_grade_level,
+      source_class_ids = [],
       class_mappings = [],
       default_target_class_id = null,
       promotion_criteria_id = null
@@ -1939,6 +2015,23 @@ const commitPromotions = async (req, res) => {
     }
     const passingAverage = Number(criteriaRows[0]?.passing_average ?? 50);
 
+    // Require both semesters to be compiled and published before promotion
+    const [semesterRows] = await pool.query(
+      'SELECT id FROM semesters WHERE academic_year_id = ? ORDER BY semester_number ASC',
+      [from_academic_year_id]
+    );
+    const totalSemesters = semesterRows.length;
+    if (totalSemesters < 2) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Promotion requires both semesters. The academic year must have 2 semesters configured.'
+        }
+      });
+    }
+
     const classMapping = new Map();
     for (const item of class_mappings) {
       if (item?.from_class_id && item?.to_class_id) {
@@ -1947,26 +2040,53 @@ const commitPromotions = async (req, res) => {
     }
 
     let gradeFilter = '';
+    let classFilter = '';
     const queryParams = [schoolId, from_academic_year_id];
     const gradeLevel = Number(source_grade_level);
     if (!isNaN(gradeLevel) && gradeLevel > 0) {
       gradeFilter = ' AND g.level = ?';
       queryParams.push(gradeLevel);
     }
+    if (Array.isArray(source_class_ids) && source_class_ids.length > 0) {
+      const placeholders = source_class_ids.map(() => '?').join(', ');
+      classFilter = ` AND se.class_id IN (${placeholders})`;
+      queryParams.push(...source_class_ids);
+    }
 
     const [rows] = await pool.query(
       `SELECT se.id as enrollment_id, se.student_id, se.class_id, g.level as grade_level,
-              COALESCE(AVG(ssr.average_score), 0) as year_average
+              COALESCE(AVG(ssr.average_score), 0) as year_average,
+              COUNT(DISTINCT ssr.semester_id) as published_semesters_count
        FROM student_enrollments se
        JOIN students s ON s.id = se.student_id
        JOIN classes c ON c.id = se.class_id
        JOIN grades g ON g.id = se.grade_id
        LEFT JOIN semesters sem ON sem.academic_year_id = se.academic_year_id
-       LEFT JOIN student_semester_results ssr ON ssr.student_id = se.student_id AND ssr.semester_id = sem.id
-       WHERE g.school_id = ? AND se.academic_year_id = ? ${gradeFilter}
+       LEFT JOIN student_semester_results ssr ON ssr.student_id = se.student_id AND ssr.semester_id = sem.id AND ssr.is_published = TRUE
+       WHERE g.school_id = ? AND se.academic_year_id = ? ${gradeFilter} ${classFilter}
        GROUP BY se.id, se.student_id, se.class_id, g.level`,
       queryParams
     );
+
+    // Include only students with all semesters published
+    const complete = rows.filter(r => (r.published_semesters_count || 0) >= totalSemesters);
+    const incomplete = rows.filter(r => (r.published_semesters_count || 0) < totalSemesters);
+
+    if (complete.length === 0) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'INCOMPLETE_SEMESTER_RESULTS',
+          message: `No students have published results for both semesters. Class Head must: 1) Compile Grades for both semesters, 2) Publish Semester for both, 3) Publish Year. ${incomplete.length} student(s) excluded.`
+        }
+      });
+    }
+
+    const eligibleRows = complete;
+    if (incomplete.length > 0) {
+      console.warn(`Promotion commit: ${incomplete.length} student(s) excluded (missing published results)`);
+    }
 
     connection = await pool.getConnection();
     await connection.beginTransaction();
@@ -1985,7 +2105,7 @@ const commitPromotions = async (req, res) => {
     let graduated = 0;
     let failed = 0;
 
-    for (const row of rows) {
+    for (const row of eligibleRows) {
       const decision = buildPromotionDecision(row.grade_level, Number(row.year_average) || 0, passingAverage);
       let toClassId = null;
       let toGradeLevel = null;
@@ -2003,17 +2123,29 @@ const commitPromotions = async (req, res) => {
       }
 
       if (decision === 'repeated') {
-        toClassId = classMapping.get(Number(row.class_id)) || null;
-        // For repeated: need a class in target year with same grade level (student stays in same grade)
+        // Repeated students MUST stay in the same grade level.
+        // Prefer same section/class name in target year; fallback to any class in same grade.
+        toClassId = null;
+        const [repeatClassRows] = await connection.query(
+          `SELECT c2.id
+           FROM classes c1
+           JOIN classes c2 ON c2.name = c1.name AND c2.academic_year_id = ?
+           JOIN grades g2 ON g2.id = c2.grade_id
+           WHERE c1.id = ? AND g2.level = ? AND g2.school_id = ?
+           LIMIT 1`,
+          [to_academic_year_id, row.class_id, row.grade_level, schoolId]
+        );
+        toClassId = repeatClassRows[0]?.id || null;
         if (!toClassId) {
-          const [repeatClassRows] = await connection.query(
+          const [fallbackRows] = await connection.query(
             `SELECT c.id FROM classes c
              JOIN grades g ON g.id = c.grade_id
              WHERE c.academic_year_id = ? AND g.level = ? AND g.school_id = ?
+             ORDER BY c.id ASC
              LIMIT 1`,
             [to_academic_year_id, row.grade_level, schoolId]
           );
-          toClassId = repeatClassRows[0]?.id || null;
+          toClassId = fallbackRows[0]?.id || null;
         }
         if (!toClassId) {
           itemStatus = 'failed';
@@ -2115,7 +2247,7 @@ const commitPromotions = async (req, res) => {
        SET committed_at = CURRENT_TIMESTAMP,
            summary_json = JSON_OBJECT('processed', ?, 'promoted', ?, 'repeated', ?, 'graduated', ?, 'failed', ?)
        WHERE id = ?`,
-      [rows.length, promoted, repeated, graduated, failed, batchId]
+      [eligibleRows.length, promoted, repeated, graduated, failed, batchId]
     );
 
     await connection.commit();
@@ -2125,7 +2257,7 @@ const commitPromotions = async (req, res) => {
       data: {
         batch_id: batchId,
         batch_code: batchCode,
-        processed: rows.length,
+        processed: eligibleRows.length,
         promoted,
         repeated,
         graduated,

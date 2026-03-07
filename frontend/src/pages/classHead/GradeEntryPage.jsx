@@ -46,27 +46,8 @@ const GradeEntryPage = () => {
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
 
-  // Fetch assigned classes on mount
+  // Fetch semesters on mount (sets selectedAcademicYearId)
   useEffect(() => {
-    const fetchClasses = async () => {
-      try {
-        setLoading(true);
-        const response = await getAssignedClasses();
-        if (response.success && response.data.items) {
-          setAssignedClasses(response.data.items);
-          // Auto-select first class if available
-          if (response.data.items.length > 0) {
-            setSelectedClassId(String(response.data.items[0].class_id));
-          }
-        }
-        setError(null);
-      } catch (err) {
-        console.error('Error fetching assigned classes:', err);
-        setError('Failed to load your teaching assignments. Please try again.');
-      } finally {
-        setLoading(false);
-      }
-    };
     const fetchSemesters = async () => {
       try {
         const response = await getLifecycleSemesters();
@@ -88,9 +69,33 @@ const GradeEntryPage = () => {
         console.error('Error fetching semesters:', err);
       }
     };
-    fetchClasses();
     fetchSemesters();
   }, []);
+
+  // Fetch assigned classes scoped to selected academic year (avoids duplicate "10 A" from multiple years)
+  useEffect(() => {
+    if (!selectedAcademicYearId) return;
+    const fetchClasses = async () => {
+      try {
+        setLoading(true);
+        const response = await getAssignedClasses({ academic_year_id: selectedAcademicYearId });
+        if (response.success && response.data.items) {
+          setAssignedClasses(response.data.items);
+          setSelectedClassId((prev) => {
+            const stillValid = response.data.items.some((c) => String(c.class_id) === prev);
+            return stillValid ? prev : (response.data.items[0] ? String(response.data.items[0].class_id) : '');
+          });
+        }
+        setError(null);
+      } catch (err) {
+        console.error('Error fetching assigned classes:', err);
+        setError('Failed to load your teaching assignments. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchClasses();
+  }, [selectedAcademicYearId]);
 
   // Get available subjects for selected class
   const getSubjectsForClass = useCallback(() => {
