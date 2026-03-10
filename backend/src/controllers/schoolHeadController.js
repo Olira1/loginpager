@@ -391,7 +391,7 @@ const createClassUnderGrade = async (req, res) => {
   try {
     const { grade_id } = req.params;
     const schoolId = req.user.school_id;
-    const { name, capacity, class_head_id } = req.body;
+    const { name, capacity, class_head_id, academic_year_id } = req.body;
 
     if (!name) {
       return res.status(400).json({
@@ -415,20 +415,33 @@ const createClassUnderGrade = async (req, res) => {
       });
     }
 
-    // Get current academic year
-    const academicYear = await getCurrentAcademicYear();
-    if (!academicYear) {
-      return res.status(400).json({
-        success: false,
-        data: null,
-        error: { code: 'VALIDATION_ERROR', message: 'No current academic year set.' }
-      });
+    // Use explicit academic year when provided; otherwise fallback to current year.
+    let academicYearId = academic_year_id ? parseInt(academic_year_id, 10) : null;
+    if (!academicYearId) {
+      const academicYear = await getCurrentAcademicYear();
+      if (!academicYear) {
+        return res.status(400).json({
+          success: false,
+          data: null,
+          error: { code: 'VALIDATION_ERROR', message: 'No current academic year set.' }
+        });
+      }
+      academicYearId = academicYear.id;
+    } else {
+      const [yearRows] = await pool.query('SELECT id FROM academic_years WHERE id = ? LIMIT 1', [academicYearId]);
+      if (yearRows.length === 0) {
+        return res.status(400).json({
+          success: false,
+          data: null,
+          error: { code: 'VALIDATION_ERROR', message: 'Invalid academic_year_id.' }
+        });
+      }
     }
 
-    // Check if class name exists for this grade
+    // Class uniqueness is per grade + academic year (same name allowed in different years).
     const [existing] = await pool.query(
-      'SELECT id FROM classes WHERE grade_id = ? AND name = ?',
-      [grade_id, name]
+      'SELECT id FROM classes WHERE grade_id = ? AND name = ? AND academic_year_id = ?',
+      [grade_id, name, academicYearId]
     );
 
     if (existing.length > 0) {
@@ -441,7 +454,7 @@ const createClassUnderGrade = async (req, res) => {
 
     const [result] = await pool.query(
       'INSERT INTO classes (grade_id, name, class_head_id, academic_year_id) VALUES (?, ?, ?, ?)',
-      [grade_id, name, class_head_id || null, academicYear.id]
+      [grade_id, name, class_head_id || null, academicYearId]
     );
 
     return res.status(201).json({
@@ -601,7 +614,7 @@ const getClass = async (req, res) => {
 const createClass = async (req, res) => {
   try {
     const schoolId = req.user.school_id;
-    const { name, grade_id, class_head_id } = req.body;
+    const { name, grade_id, class_head_id, academic_year_id } = req.body;
 
     if (!name || !grade_id) {
       return res.status(400).json({
@@ -625,20 +638,33 @@ const createClass = async (req, res) => {
       });
     }
 
-    // Get current academic year
-    const academicYear = await getCurrentAcademicYear();
-    if (!academicYear) {
-      return res.status(400).json({
-        success: false,
-        data: null,
-        error: { code: 'VALIDATION_ERROR', message: 'No current academic year set.' }
-      });
+    // Use explicit academic year when provided; otherwise fallback to current year.
+    let academicYearId = academic_year_id ? parseInt(academic_year_id, 10) : null;
+    if (!academicYearId) {
+      const academicYear = await getCurrentAcademicYear();
+      if (!academicYear) {
+        return res.status(400).json({
+          success: false,
+          data: null,
+          error: { code: 'VALIDATION_ERROR', message: 'No current academic year set.' }
+        });
+      }
+      academicYearId = academicYear.id;
+    } else {
+      const [yearRows] = await pool.query('SELECT id FROM academic_years WHERE id = ? LIMIT 1', [academicYearId]);
+      if (yearRows.length === 0) {
+        return res.status(400).json({
+          success: false,
+          data: null,
+          error: { code: 'VALIDATION_ERROR', message: 'Invalid academic_year_id.' }
+        });
+      }
     }
 
-    // Check if class name exists for this grade
+    // Class uniqueness is per grade + academic year (same name allowed in different years).
     const [existing] = await pool.query(
-      'SELECT id FROM classes WHERE grade_id = ? AND name = ?',
-      [grade_id, name]
+      'SELECT id FROM classes WHERE grade_id = ? AND name = ? AND academic_year_id = ?',
+      [grade_id, name, academicYearId]
     );
 
     if (existing.length > 0) {
@@ -651,7 +677,7 @@ const createClass = async (req, res) => {
 
     const [result] = await pool.query(
       'INSERT INTO classes (grade_id, name, class_head_id, academic_year_id) VALUES (?, ?, ?, ?)',
-      [grade_id, name, class_head_id || null, academicYear.id]
+      [grade_id, name, class_head_id || null, academicYearId]
     );
 
     return res.status(201).json({

@@ -599,7 +599,13 @@ const GradesClassesPage = () => {
   // Handle class save
   const handleSaveClass = async (formData) => {
     if (classModal.mode === 'create') {
-      await createClass(classModal.grade.id, formData);
+      if (!selectedAcademicYearId) {
+        throw new Error('Select an academic year before adding a class.');
+      }
+      await createClass(classModal.grade.id, {
+        ...formData,
+        academic_year_id: parseInt(selectedAcademicYearId, 10)
+      });
     } else {
       await updateClass(classModal.classItem.id, formData);
     }

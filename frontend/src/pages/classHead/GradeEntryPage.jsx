@@ -37,6 +37,7 @@ const GradeEntryPage = () => {
   // State: grade data
   const [gradeData, setGradeData] = useState(null);
   const [editedGrades, setEditedGrades] = useState({}); // { studentId: { assessmentTypeId: score } }
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   // State: UI
   const [loading, setLoading] = useState(true);
@@ -147,6 +148,7 @@ const GradeEntryPage = () => {
           });
         });
         setEditedGrades(initial);
+        setHasUnsavedChanges(false);
       }
       setError(null);
     } catch (err) {
@@ -177,6 +179,15 @@ const GradeEntryPage = () => {
         },
       },
     }));
+    setHasUnsavedChanges(true);
+  };
+
+  // Resolve current cell value from edited state first, then API value.
+  const getCellValue = (student, assessmentTypeId) => {
+    const editedScore = editedGrades[student.student_id]?.[assessmentTypeId]?.score;
+    if (editedScore !== undefined && editedScore !== null) return editedScore;
+    const existing = student.grades?.find((g) => g.assessment_type_id === assessmentTypeId);
+    return existing?.score != null ? existing.score : '';
   };
 
   // Compute total weighted score for a student from current grades
@@ -185,22 +196,11 @@ const GradeEntryPage = () => {
     let total = 0;
     let hasAnyScore = false;
     for (const at of types) {
-      // Check edited grades first, then original grade data
-      const edited = editedGrades[student.student_id]?.[at.id];
-      const score = edited?.score !== undefined && edited?.score !== '' ? parseFloat(edited.score) : null;
-      if (score === null) {
-        // fallback to original grade
-        const origGrade = student.grades?.find(g => g.assessment_type_id === at.id);
-        if (origGrade && origGrade.score != null) {
-          const origScore = parseFloat(origGrade.score);
-          const maxScore = parseFloat(at.max_score) || 100;
-          const weight = parseFloat(at.weight_percent) || 0;
-          total += (origScore / maxScore) * weight;
-          hasAnyScore = true;
-        }
-      } else {
-        const maxScore = parseFloat(at.max_score) || 100;
-        const weight = parseFloat(at.weight_percent) || 0;
+      const cellVal = getCellValue(student, at.id);
+      const score = parseFloat(cellVal);
+      const maxScore = parseFloat(at.max_score) || 100;
+      const weight = parseFloat(at.weight_percent) || 0;
+      if (!isNaN(score) && cellVal !== '' && cellVal != null) {
         total += (score / maxScore) * weight;
         hasAnyScore = true;
       }
@@ -210,6 +210,13 @@ const GradeEntryPage = () => {
 
   // Get unique assessment types from grade data
   const getAssessmentTypes = () => {
+    const fromApi = gradeData?.assessment_types?.map((at) => ({
+      id: at.assessment_type_id,
+      name: at.assessment_type_name,
+      max_score: parseFloat(at.max_score) || 0,
+      weight_percent: parseFloat(at.weight_percent) || 0
+    })) || [];
+    if (fromApi.length > 0) return fromApi;
     if (!gradeData?.items?.length) return [];
     // Collect from all students' grades
     const typesMap = {};
@@ -265,6 +272,7 @@ const GradeEntryPage = () => {
       setSuccessMessage('Grades saved successfully!');
       // Refresh grades after save
       await fetchGrades();
+      setHasUnsavedChanges(false);
     } catch (err) {
       console.error('Error saving grades:', err);
       const errorData = err.response?.data?.error;
@@ -276,6 +284,14 @@ const GradeEntryPage = () => {
 
   // Submit grades for approval
   const handleSubmitForApproval = async () => {
+    if (hasUnsavedChanges) {
+      setError('Please save your changes first by clicking "Save Grades" before submitting.');
+      return;
+    }
+    if (!hasAllMarksFilled()) {
+      setError('Cannot submit: please fill all marks for all students before submitting for approval.');
+      return;
+    }
     if (!window.confirm('Are you sure you want to submit these grades for approval? You cannot edit them after submission.')) {
       return;
     }
@@ -305,6 +321,19 @@ const GradeEntryPage = () => {
   };
 
   const assessmentTypes = getAssessmentTypes();
+  const hasAllMarksFilled = () => {
+    if (!gradeData?.items?.length || !assessmentTypes.length) return false;
+    for (const student of gradeData.items) {
+      for (const at of assessmentTypes) {
+        const val = getCellValue(student, at.id);
+        const score = parseFloat(val);
+        if (val === '' || val == null || Number.isNaN(score) || score < 0) {
+          return false;
+        }
+      }
+    }
+    return true;
+  };
 
   // Loading state
   if (loading) {
@@ -484,7 +513,7 @@ const GradeEntryPage = () => {
               </button>
               <button
                 onClick={handleSubmitForApproval}
-                disabled={submitting}
+                disabled={submitting || hasUnsavedChanges || !hasAllMarksFilled()}
                 className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50 text-sm font-medium"
               >
                 {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
@@ -526,7 +555,7 @@ const GradeEntryPage = () => {
                       {student.student_name}
                     </td>
                     {assessmentTypes.map((at) => {
-                      const currentScore = editedGrades[student.student_id]?.[at.id]?.score;
+                      const currentScore = getCellValue(student, at.id);
                       return (
                         <td key={at.id} className="px-4 py-2 text-center">
                           <input
